@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# CachyOS / Arch package files or virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Configuration and user-specific files
+/etc/openitro.json
+/run/openitro.sock
+
+# User requested to ignore Docs folder
+Docs/
+/Docs/
+
+# IDE files
+.idea/
+.vscode/
+.gemini/
+*~
+*.swp
