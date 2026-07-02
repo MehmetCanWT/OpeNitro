@@ -59,6 +59,14 @@ sudo pacman -S python pyqt6
    sudo ./install.sh
    ```
 
+### 🗑️ Uninstallation
+
+If you wish to cleanly remove OpeNitro and all its related services, configurations, and shortcuts from your operating system, simply run the uninstaller script:
+
+```bash
+sudo ./uninstall.sh
+```
+
 > [!IMPORTANT]
 > The installer copies all source files to `/opt/openitro/`, establishes command-line wrappers inside `/usr/local/bin/`, registers the systemd daemon (`openitrod`), and places the desktop icon and shortcut menu item.
 

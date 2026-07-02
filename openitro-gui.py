@@ -7,6 +7,7 @@ Communicates with openitrod via UNIX socket. Single-instance aware.
 import json
 import socket
 import sys
+import time
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
@@ -14,6 +15,32 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 SOCKET_PATH = "/run/openitro.sock"
 SINGLE_INSTANCE_NAME = "openitro_gui_single_instance"
 SOCKET_TIMEOUT = 2  # seconds
+
+
+class ClickSlider(QtWidgets.QSlider):
+    """QSlider that jumps directly to the clicked position and supports dragging."""
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            val = QtWidgets.QStyle.sliderValueFromPosition(
+                self.minimum(),
+                self.maximum(),
+                int(event.position().x()),
+                self.width()
+            )
+            self.setValue(val)
+            self.sliderMoved.emit(val)
+            
+            span = self.maximum() - self.minimum()
+            handle_x = int((val - self.minimum()) / span * self.width()) if span > 0 else 0
+            event = QtGui.QMouseEvent(
+                event.type(),
+                QtCore.QPointF(handle_x, event.position().y()),
+                event.button(),
+                event.buttons(),
+                event.modifiers()
+            )
+        super().mousePressEvent(event)
 
 
 # ─── Custom Widgets ───
@@ -235,6 +262,7 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.status_data: dict = {}
+        self._last_slider_change = {"cpu": 0.0, "gpu": 0.0}
         self._build_ui()
 
         self._poll_timer = QtCore.QTimer(self)
@@ -409,8 +437,10 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
         slider_row = QtWidgets.QHBoxLayout()
         slider_row.addWidget(QtWidgets.QLabel("Speed:"))
-        slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        slider = ClickSlider(QtCore.Qt.Orientation.Horizontal)
         slider.setRange(0, 200)
+        slider.sliderPressed.connect(lambda u=unit: self._register_slider_interaction(u))
+        slider.sliderMoved.connect(lambda v, u=unit: self._register_slider_interaction(u))
         slider.sliderReleased.connect(lambda u=unit: self._set_fan_speed_manual(u))
         slider_row.addWidget(slider)
         slider_lbl = QtWidgets.QLabel("0")
@@ -460,8 +490,10 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         self._bat_toggle.setChecked(data.get("battery_limit_active", False))
         self._bat_toggle.blockSignals(False)
 
-    @staticmethod
-    def _update_fan_section(data, unit, temp_w, fan_w, rpm_lbl, btn_auto, btn_max, btn_manual, slider):
+    def _register_slider_interaction(self, unit: str):
+        self._last_slider_change[unit] = time.time()
+
+    def _update_fan_section(self, data, unit, temp_w, fan_w, rpm_lbl, btn_auto, btn_max, btn_manual, slider):
         rpm = data.get(f"{unit}_rpm", 0)
         temp = data.get(f"{unit}_temp", 0)
         mode = data.get(f"{unit}_fan_mode", "auto")
@@ -471,8 +503,9 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         temp_w.set_temp(temp)
         fan_w.set_rpm(rpm)
 
-        if not slider.isSliderDown():
-            slider.setValue(speed)
+        if time.time() - self._last_slider_change.get(unit, 0.0) >= 2.5:
+            if not slider.isSliderDown():
+                slider.setValue(speed)
 
         if mode == "turbo":
             btn_max.setChecked(True)
@@ -492,10 +525,13 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
     def _set_fan_mode(self, unit: str, mode: str):
         slider = self._cpu_slider if unit == "cpu" else self._gpu_slider
         slider.setEnabled(mode == "manual")
+        if mode == "manual":
+            self._last_slider_change[unit] = time.time()
         self._send_command(f"SET_FAN_MODE {unit} {mode} {slider.value()}")
 
     def _set_fan_speed_manual(self, unit: str):
         slider = self._cpu_slider if unit == "cpu" else self._gpu_slider
+        self._last_slider_change[unit] = time.time()
         self._send_command(f"SET_FAN_MODE {unit} manual {slider.value()}")
 
     def _toggle_battery_limit(self, checked: bool):
