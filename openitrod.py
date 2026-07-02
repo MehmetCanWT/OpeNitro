@@ -189,6 +189,41 @@ class OpeNitroDaemon:
     @staticmethod
     def _get_console_user() -> str | None:
         """Best-effort detection of the active GUI user."""
+        # 1. Scan /proc for compositor/session processes to find the user
+        try:
+            for pid_str in os.listdir("/proc"):
+                if not pid_str.isdigit():
+                    continue
+                try:
+                    with open(f"/proc/{pid_str}/comm", "r") as f:
+                        comm = f.read().strip()
+                    if comm in _SESSION_PROCS:
+                        stat = os.stat(f"/proc/{pid_str}")
+                        uid = stat.st_uid
+                        user = pwd.getpwuid(uid).pw_name
+                        if user and user not in ("root", "sddm", "gdm", "lightdm", "nobody"):
+                            return user
+                except (OSError, ValueError, KeyError):
+                    continue
+        except OSError:
+            pass
+
+        # 2. Fallback to loginctl sessions
+        try:
+            result = subprocess.run(
+                ["loginctl", "list-sessions", "--no-legend"],
+                capture_output=True, text=True, check=False
+            )
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 3:
+                    user = parts[2]
+                    if user and user not in ("root", "sddm", "gdm", "lightdm", "nobody"):
+                        return user
+        except OSError:
+            pass
+
+        # 3. Fallback to who command
         try:
             result = subprocess.run(
                 ["who"], capture_output=True, text=True, check=False
@@ -196,12 +231,16 @@ class OpeNitroDaemon:
             for line in result.stdout.splitlines():
                 parts = line.split()
                 if len(parts) >= 2 and (":0" in line or "tty" in parts[1]):
-                    return parts[0]
-            # Fallback: first line
+                    user = parts[0]
+                    if user and user not in ("root", "sddm", "gdm", "lightdm", "nobody"):
+                        return user
             if result.stdout.strip():
-                return result.stdout.splitlines()[0].split()[0]
+                user = result.stdout.splitlines()[0].split()[0]
+                if user and user not in ("root", "sddm", "gdm", "lightdm", "nobody"):
+                    return user
         except OSError:
             pass
+
         return None
 
     @staticmethod
