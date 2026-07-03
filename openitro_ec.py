@@ -62,6 +62,21 @@ class OpeNitroEC:
     NITRO_MODE_DEFAULT = 0x01
     NITRO_MODE_EXTREME = 0x04
 
+    # CoolBoost
+    REG_COOLBOOST = 0x10
+    COOLBOOST_ON = 0x01
+    COOLBOOST_OFF = 0x00
+
+    # Keyboard backlight 30s timeout
+    REG_KB_TIMEOUT = 0x06
+    KB_TIMEOUT_ON = 0x1E
+    KB_TIMEOUT_OFF = 0x00
+
+    # USB Power-off charging
+    REG_USB_CHARGE = 0x08
+    USB_CHARGE_ON = 0x0F
+    USB_CHARGE_OFF = 0x1F
+
     # ─── Mode lookup maps ───
     _CPU_MODE_MAP = {
         CPU_AUTO_MODE: "auto",
@@ -85,6 +100,24 @@ class OpeNitroEC:
         self.buffer = b""
         self._lock = threading.Lock()
         self.model = self._detect_model()
+
+        # Resolve instance-level variables for layout mappings
+        self.REG_GPU_TEMP = self.REG_GPU_TEMP
+        self.REG_SYS_TEMP = self.REG_SYS_TEMP
+        self.BATTERY_LIMIT_ON = self.BATTERY_LIMIT_ON
+        self.BATTERY_LIMIT_OFF = self.BATTERY_LIMIT_OFF
+
+        # Apply model-specific overrides (e.g. for older AMD models)
+        if any(m in self.model for m in ("AN515-44", "AN515-43")):
+            self.REG_GPU_TEMP = 0xB4
+            self.REG_SYS_TEMP = 0xB0
+            self.BATTERY_LIMIT_ON = 0x40
+            self.BATTERY_LIMIT_OFF = 0x00
+            print(f"[EC] Applied AN515-44 register overrides for model: {self.model}", file=sys.stderr)
+        elif any(m in self.model.lower() for m in ("predator", "helios", "triton")):
+            print(f"[EC] Detected Acer Predator/Helios/Triton series. Utilizing standard gaming registers for model: {self.model}", file=sys.stderr)
+        else:
+            print(f"[EC] Detected Acer Nitro/standard series. Utilizing standard registers for model: {self.model}", file=sys.stderr)
 
     # ─── Initialization ───
 
@@ -209,4 +242,7 @@ class OpeNitroEC:
             "battery_limit_active": self.ec_read(self.REG_BATTERY_CHARGE_LIMIT)
             == self.BATTERY_LIMIT_ON,
             "nitro_mode": self._NITRO_MODE_MAP.get(nitro_mode_raw, "unknown"),
+            "coolboost_active": self.ec_read(self.REG_COOLBOOST) == self.COOLBOOST_ON,
+            "kb_backlight_timeout": self.ec_read(self.REG_KB_TIMEOUT) == self.KB_TIMEOUT_ON,
+            "usb_charge_poweroff": self.ec_read(self.REG_USB_CHARGE) == self.USB_CHARGE_ON,
         }

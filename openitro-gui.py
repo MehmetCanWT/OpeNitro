@@ -5,6 +5,7 @@ Communicates with openitrod via UNIX socket. Single-instance aware.
 """
 
 import json
+import os
 import socket
 import sys
 import time
@@ -88,7 +89,7 @@ class FanWidget(QtWidgets.QWidget):
         painter.rotate(self.angle)
 
         # Fan blades
-        blade_color = QtGui.QColor(240, 84, 84, 160)
+        blade_color = QtGui.QColor(255, 62, 108, 160)
         painter.setBrush(blade_color)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
 
@@ -117,7 +118,7 @@ class FanWidget(QtWidgets.QWidget):
         hub_grad.setColorAt(0.8, QtGui.QColor(30, 30, 32))
         hub_grad.setColorAt(1, QtGui.QColor(15, 15, 17))
         painter.setBrush(hub_grad)
-        painter.setPen(QtGui.QPen(QtGui.QColor(240, 84, 84), 1.5))
+        painter.setPen(QtGui.QPen(QtGui.QColor(255, 62, 108), 1.5))
         painter.drawEllipse(QtCore.QPointF(0, 0), side / 8.0, side / 8.0)
 
 
@@ -156,11 +157,11 @@ class TemperatureGauge(QtWidgets.QWidget):
         # Active arc
         angle_span = int(min(1.0, self.temp / 100.0) * 270)
         if self.temp >= 80:
-            arc_color = QtGui.QColor(231, 76, 60)
+            arc_color = QtGui.QColor(255, 62, 108)
         elif self.temp >= 65:
             arc_color = QtGui.QColor(241, 196, 15)
         else:
-            arc_color = QtGui.QColor(46, 204, 113)
+            arc_color = QtGui.QColor(0, 226, 154)
         painter.setPen(
             QtGui.QPen(
                 arc_color, 6,
@@ -241,7 +242,7 @@ class ToggleSwitch(QtWidgets.QWidget):
         radius = h / 2.0
 
         # Track
-        track_color = QtGui.QColor(240, 84, 84) if self._checked else QtGui.QColor(45, 45, 53)
+        track_color = QtGui.QColor(255, 62, 108) if self._checked else QtGui.QColor(28, 28, 36)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
         painter.setBrush(track_color)
         painter.drawRoundedRect(QtCore.QRectF(0, 0, w, h), radius, radius)
@@ -297,8 +298,19 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self):
         self.setWindowTitle("OpeNitro Controller")
-        self.setFixedSize(720, 740)
+        self.setFixedSize(720, 890)
         self.setObjectName("MainWindow")
+
+        # Window Icon
+        icon_path = "/usr/share/pixmaps/openitro.png"
+        if not os.path.exists(icon_path):
+            local_icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openitro.png")
+            if os.path.exists(local_icon):
+                icon_path = local_icon
+            else:
+                icon_path = "/opt/openitro/openitro.png"
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QtGui.QIcon(icon_path))
 
         self.setStyleSheet(_STYLESHEET)
 
@@ -324,11 +336,11 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
         self._power_src_lbl = QtWidgets.QLabel("—")
         self._power_src_lbl.setStyleSheet(
-            "font-size: 9pt; color: #A0A0A5; font-weight: bold; "
-            "background: #1E1E24; padding: 6px 12px; border-radius: 6px; "
+            "font-size: 8pt; color: #A0A0A5; font-weight: bold; "
+            "background: #1E1E24; padding: 4px 10px; border-radius: 6px; "
             "border: 1px solid #2C2C35;"
         )
-        header.addWidget(self._power_src_lbl)
+        header.addWidget(self._power_src_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         root.addLayout(header)
 
         # ── Performance Modes ──
@@ -367,28 +379,102 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
         root.addLayout(fans)
 
-        # ── Battery Protection ──
-        bat_grp = QtWidgets.QGroupBox("BATTERY PROTECTION")
-        bat_lay = QtWidgets.QVBoxLayout(bat_grp)
-        bat_lay.setContentsMargins(20, 15, 20, 15)
-        bat_lay.setSpacing(12)
+        # ── System Settings & Health ──
+        sys_grp = QtWidgets.QGroupBox("SYSTEM SETTINGS & HEALTH")
+        sys_lay = QtWidgets.QVBoxLayout(sys_grp)
+        sys_lay.setContentsMargins(20, 15, 20, 15)
+        sys_lay.setSpacing(10)
 
-        row = QtWidgets.QHBoxLayout()
-        desc = QtWidgets.QVBoxLayout()
-        t = QtWidgets.QLabel("80% Charge Limit")
-        t.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
-        desc.addWidget(t)
-        s = QtWidgets.QLabel("Preserves battery health when plugged in")
-        s.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
-        desc.addWidget(s)
-        row.addLayout(desc)
-        row.addStretch()
+        # Row 1: Battery limit
+        row1 = QtWidgets.QHBoxLayout()
+        desc1 = QtWidgets.QVBoxLayout()
+        t1 = QtWidgets.QLabel("80% Charge Limit")
+        t1.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc1.addWidget(t1)
+        s1 = QtWidgets.QLabel("Preserves battery health by stopping charge at 80%")
+        s1.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc1.addWidget(s1)
+        row1.addLayout(desc1)
+        row1.addStretch()
 
         self._bat_toggle = ToggleSwitch()
         self._bat_toggle.toggled.connect(self._toggle_battery_limit)
-        row.addWidget(self._bat_toggle)
-        bat_lay.addLayout(row)
-        root.addWidget(bat_grp)
+        row1.addWidget(self._bat_toggle)
+        sys_lay.addLayout(row1)
+
+        # Divider 1
+        div1 = QtWidgets.QFrame()
+        div1.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        div1.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        div1.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
+        sys_lay.addWidget(div1)
+
+        # Row 2: CoolBoost
+        row2 = QtWidgets.QHBoxLayout()
+        desc2 = QtWidgets.QVBoxLayout()
+        t2 = QtWidgets.QLabel("Acer CoolBoost")
+        t2.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc2.addWidget(t2)
+        s2 = QtWidgets.QLabel("Delivers higher maximum fan speed and cooling under load")
+        s2.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc2.addWidget(s2)
+        row2.addLayout(desc2)
+        row2.addStretch()
+
+        self._cb_toggle = ToggleSwitch()
+        self._cb_toggle.toggled.connect(self._toggle_coolboost)
+        row2.addWidget(self._cb_toggle)
+        sys_lay.addLayout(row2)
+
+        # Divider 2
+        div2 = QtWidgets.QFrame()
+        div2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        div2.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        div2.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
+        sys_lay.addWidget(div2)
+
+        # Row 3: Keyboard timeout
+        row3 = QtWidgets.QHBoxLayout()
+        desc3 = QtWidgets.QVBoxLayout()
+        t3 = QtWidgets.QLabel("Keyboard Backlight Timeout")
+        t3.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc3.addWidget(t3)
+        s3 = QtWidgets.QLabel("Automatically turns off the keyboard backlight after 30 seconds of inactivity")
+        s3.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc3.addWidget(s3)
+        row3.addLayout(desc3)
+        row3.addStretch()
+
+        self._kb_toggle = ToggleSwitch()
+        self._kb_toggle.toggled.connect(self._toggle_kb_timeout)
+        row3.addWidget(self._kb_toggle)
+        sys_lay.addLayout(row3)
+
+        # Divider 3
+        div3 = QtWidgets.QFrame()
+        div3.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        div3.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        div3.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
+        sys_lay.addWidget(div3)
+
+        # Row 4: USB Power-off Charging
+        row4 = QtWidgets.QHBoxLayout()
+        desc4 = QtWidgets.QVBoxLayout()
+        t4 = QtWidgets.QLabel("USB Power-off Charging")
+        t4.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc4.addWidget(t4)
+        s4 = QtWidgets.QLabel("Allows charging external devices from USB ports when laptop is shut down")
+        s4.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc4.addWidget(s4)
+        row4.addLayout(desc4)
+        row4.addStretch()
+
+        self._usb_toggle = ToggleSwitch()
+        self._usb_toggle.toggled.connect(self._toggle_usb_charge)
+        row4.addWidget(self._usb_toggle)
+        sys_lay.addLayout(row4)
+
+        root.addWidget(sys_grp)
 
         # Status
         self._status_lbl = QtWidgets.QLabel("Starting…")
@@ -461,8 +547,18 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         charging = data.get("battery_charging", False)
         if plugged:
             self._power_src_lbl.setText("⚡ AC (Charging)" if charging else "⚡ AC")
+            self._power_src_lbl.setStyleSheet(
+                "font-size: 8pt; color: #39C481; font-weight: bold; "
+                "background: #12281D; padding: 4px 10px; border-radius: 6px; "
+                "border: 1px solid #1B452D;"
+            )
         else:
             self._power_src_lbl.setText("🔋 Battery")
+            self._power_src_lbl.setStyleSheet(
+                "font-size: 8pt; color: #FFB340; font-weight: bold; "
+                "background: #2A1F12; padding: 4px 10px; border-radius: 6px; "
+                "border: 1px solid #4D331A;"
+            )
 
         # Power mode
         pmode = data.get("nitro_mode", "default")
@@ -489,6 +585,21 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         self._bat_toggle.blockSignals(True)
         self._bat_toggle.setChecked(data.get("battery_limit_active", False))
         self._bat_toggle.blockSignals(False)
+
+        # CoolBoost toggle
+        self._cb_toggle.blockSignals(True)
+        self._cb_toggle.setChecked(data.get("coolboost_active", False))
+        self._cb_toggle.blockSignals(False)
+
+        # Keyboard timeout toggle
+        self._kb_toggle.blockSignals(True)
+        self._kb_toggle.setChecked(data.get("kb_backlight_timeout", True))
+        self._kb_toggle.blockSignals(False)
+
+        # USB charge toggle
+        self._usb_toggle.blockSignals(True)
+        self._usb_toggle.setChecked(data.get("usb_charge_poweroff", False))
+        self._usb_toggle.blockSignals(False)
 
     def _register_slider_interaction(self, unit: str):
         self._last_slider_change[unit] = time.time()
@@ -537,6 +648,15 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
     def _toggle_battery_limit(self, checked: bool):
         self._send_command(f"SET_BATTERY_LIMIT {'on' if checked else 'off'}")
 
+    def _toggle_coolboost(self, checked: bool):
+        self._send_command(f"SET_COOLBOOST {'on' if checked else 'off'}")
+
+    def _toggle_kb_timeout(self, checked: bool):
+        self._send_command(f"SET_KB_TIMEOUT {'on' if checked else 'off'}")
+
+    def _toggle_usb_charge(self, checked: bool):
+        self._send_command(f"SET_USB_CHARGE {'on' if checked else 'off'}")
+
     def closeEvent(self, event):
         self._poll_timer.stop()
         super().closeEvent(event)
@@ -545,51 +665,53 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 # ─── Stylesheet ───
 
 _STYLESHEET = """
-QWidget#MainWindow { background-color: #111113; }
+QWidget#MainWindow { background-color: #0C0C0E; }
 QLabel {
-    color: #ECECF1;
+    color: #E2E2E9;
     font-family: "Outfit", "Inter", "Segoe UI", sans-serif;
 }
 QGroupBox {
-    border: 1px solid #232328;
+    border: 1px solid #22222B;
     border-radius: 12px;
-    background-color: #18181C;
+    background-color: #131318;
     margin-top: 15px;
-    padding: 10px;
+    padding: 12px;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top center;
-    padding: 0 10px;
-    color: #F05454;
-    font-weight: bold;
+    padding: 0 12px;
+    color: #FF3E6C;
+    font-weight: 800;
     font-size: 11pt;
+    letter-spacing: 1px;
 }
 QPushButton {
-    background-color: #24242B;
-    border: 1px solid #32323A;
+    background-color: #1C1C24;
+    border: 1px solid #2C2C39;
     border-radius: 8px;
-    color: #ECECF1;
+    color: #E2E2E9;
     padding: 8px 16px;
     font-size: 9pt;
     font-weight: bold;
 }
 QPushButton:hover {
-    background-color: #2E2E37;
-    border-color: #F05454;
+    background-color: #252530;
+    border-color: #FF3E6C;
+    color: #FFFFFF;
 }
 QPushButton:checked {
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F05454, stop:1 #C92C2C);
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FF3E6C, stop:1 #E60045);
     border: none;
     color: #FFFFFF;
 }
 QSlider::groove:horizontal {
     height: 6px;
-    background: #2D2D35;
+    background: #1C1C24;
     border-radius: 3px;
 }
 QSlider::sub-page:horizontal {
-    background: #F05454;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FF3E6C, stop:1 #FF6B8B);
     border-radius: 3px;
 }
 QSlider::handle:horizontal {
@@ -598,8 +720,12 @@ QSlider::handle:horizontal {
     margin-top: -4px;
     margin-bottom: -4px;
     border-radius: 7px;
+    border: 1px solid #2C2C39;
 }
-QSlider::handle:horizontal:hover { background: #F05454; }
+QSlider::handle:horizontal:hover {
+    background: #FF3E6C;
+    border-color: #FF6B8B;
+}
 """
 
 
@@ -608,6 +734,7 @@ QSlider::handle:horizontal:hover { background: #F05454; }
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    app.setDesktopFileName("openitro.desktop")
 
     # Single-instance check via QLocalSocket / QLocalServer
     probe = QLocalSocket()

@@ -61,6 +61,9 @@ class OpeNitroDaemon:
             "cpu_manual_speed": 100,
             "gpu_manual_speed": 100,
             "nitro_mode": "default",
+            "coolboost_active": False,
+            "kb_backlight_timeout": True,
+            "usb_charge_poweroff": False,
         }
         self.running = True
         self._gui_proc = None        # Track spawned GUI process
@@ -98,6 +101,9 @@ class OpeNitroDaemon:
             speed = self.config.get(f"{unit}_manual_speed", 100)
             self._set_fan_mode_ec(unit, mode, speed)
         self._set_battery_limit_ec(self.config.get("battery_limit_active", False))
+        self._set_coolboost_ec(self.config.get("coolboost_active", False))
+        self._set_kb_backlight_timeout_ec(self.config.get("kb_backlight_timeout", True))
+        self._set_usb_charge_poweroff_ec(self.config.get("usb_charge_poweroff", False))
 
     def _set_power_mode_ec(self, mode: str) -> bool:
         val_map = {
@@ -134,25 +140,58 @@ class OpeNitroDaemon:
         val = self.ec.BATTERY_LIMIT_ON if enable else self.ec.BATTERY_LIMIT_OFF
         return self.ec.ec_write(self.ec.REG_BATTERY_CHARGE_LIMIT, val)
 
-    # ─── Background monitor (battery limit enforcement) ───
+    def _set_coolboost_ec(self, enable: bool) -> bool:
+        val = self.ec.COOLBOOST_ON if enable else self.ec.COOLBOOST_OFF
+        return self.ec.ec_write(self.ec.REG_COOLBOOST, val)
+
+    def _set_kb_backlight_timeout_ec(self, enable: bool) -> bool:
+        val = self.ec.KB_TIMEOUT_ON if enable else self.ec.KB_TIMEOUT_OFF
+        return self.ec.ec_write(self.ec.REG_KB_TIMEOUT, val)
+
+    def _set_usb_charge_poweroff_ec(self, enable: bool) -> bool:
+        val = self.ec.USB_CHARGE_ON if enable else self.ec.USB_CHARGE_OFF
+        return self.ec.ec_write(self.ec.REG_USB_CHARGE, val)
+
+    # ─── Background monitor (battery limit & setting enforcement) ───
 
     def _monitor_loop(self):
-        """Periodically verify the battery-limit register hasn't been reset by the BIOS."""
-        print("[monitor] Battery-limit enforcement thread started")
+        """Periodically verify the EC registers haven't been reset by the BIOS."""
+        print("[monitor] Background enforcement thread started")
         while self.running:
             try:
                 if self.ec.ec_refresh():
-                    want_on = self.config.get("battery_limit_active", False)
-                    expected = (
-                        self.ec.BATTERY_LIMIT_ON if want_on else self.ec.BATTERY_LIMIT_OFF
-                    )
-                    actual = self.ec.ec_read(self.ec.REG_BATTERY_CHARGE_LIMIT)
-                    if actual != expected:
-                        print(
-                            f"[monitor] Battery limit mismatch "
-                            f"(got {hex(actual)}, want {hex(expected)}). Reinforcing…"
-                        )
-                        self._set_battery_limit_ec(want_on)
+                    # 1. Battery Limit
+                    want_bat = self.config.get("battery_limit_active", False)
+                    expected_bat = self.ec.BATTERY_LIMIT_ON if want_bat else self.ec.BATTERY_LIMIT_OFF
+                    actual_bat = self.ec.ec_read(self.ec.REG_BATTERY_CHARGE_LIMIT)
+                    if actual_bat != expected_bat:
+                        print(f"[monitor] Battery limit mismatch (got {hex(actual_bat)}, want {hex(expected_bat)}). Reinforcing…")
+                        self._set_battery_limit_ec(want_bat)
+
+                    # 2. CoolBoost
+                    want_cb = self.config.get("coolboost_active", False)
+                    expected_cb = self.ec.COOLBOOST_ON if want_cb else self.ec.COOLBOOST_OFF
+                    actual_cb = self.ec.ec_read(self.ec.REG_COOLBOOST)
+                    if actual_cb != expected_cb:
+                        print(f"[monitor] CoolBoost mismatch (got {hex(actual_cb)}, want {hex(expected_cb)}). Reinforcing…")
+                        self._set_coolboost_ec(want_cb)
+
+                    # 3. Keyboard Backlight Timeout
+                    want_kb = self.config.get("kb_backlight_timeout", True)
+                    expected_kb = self.ec.KB_TIMEOUT_ON if want_kb else self.ec.KB_TIMEOUT_OFF
+                    actual_kb = self.ec.ec_read(self.ec.REG_KB_TIMEOUT)
+                    if actual_kb != expected_kb:
+                        print(f"[monitor] Keyboard timeout mismatch (got {hex(actual_kb)}, want {hex(expected_kb)}). Reinforcing…")
+                        self._set_kb_backlight_timeout_ec(want_kb)
+
+                    # 4. USB Suspend Charging
+                    want_usb = self.config.get("usb_charge_poweroff", False)
+                    expected_usb = self.ec.USB_CHARGE_ON if want_usb else self.ec.USB_CHARGE_OFF
+                    actual_usb = self.ec.ec_read(self.ec.REG_USB_CHARGE)
+                    if actual_usb != expected_usb:
+                        print(f"[monitor] USB charging mismatch (got {hex(actual_usb)}, want {hex(expected_usb)}). Reinforcing…")
+                        self._set_usb_charge_poweroff_ec(want_usb)
+
             except Exception as e:
                 print(f"[monitor] Error: {e}", file=sys.stderr)
             time.sleep(5)
@@ -406,6 +445,9 @@ class OpeNitroDaemon:
                         "cpu_manual_speed",
                         "gpu_manual_speed",
                         "nitro_mode",
+                        "coolboost_active",
+                        "kb_backlight_timeout",
+                        "usb_charge_poweroff",
                     ):
                         self.config[key] = status[key]
                     response = {"status": "success", "data": status}
@@ -473,6 +515,72 @@ class OpeNitroDaemon:
                             response = {
                                 "status": "success",
                                 "message": f"Battery limit → {'on' if enable else 'off'}",
+                            }
+                        else:
+                            response = {
+                                "status": "error",
+                                "message": "EC write failed",
+                            }
+
+            elif cmd == "SET_COOLBOOST":
+                if len(parts) < 2:
+                    response = {"status": "error", "message": "Missing state"}
+                else:
+                    state = parts[1].lower()
+                    if state not in ("on", "off", "1", "0", "true", "false"):
+                        response = {"status": "error", "message": "Invalid state"}
+                    else:
+                        enable = state in ("on", "1", "true")
+                        if self._set_coolboost_ec(enable):
+                            self.config["coolboost_active"] = enable
+                            self._save_config()
+                            response = {
+                                "status": "success",
+                                "message": f"CoolBoost → {'on' if enable else 'off'}",
+                            }
+                        else:
+                            response = {
+                                "status": "error",
+                                "message": "EC write failed",
+                            }
+
+            elif cmd == "SET_KB_TIMEOUT":
+                if len(parts) < 2:
+                    response = {"status": "error", "message": "Missing state"}
+                else:
+                    state = parts[1].lower()
+                    if state not in ("on", "off", "1", "0", "true", "false"):
+                        response = {"status": "error", "message": "Invalid state"}
+                    else:
+                        enable = state in ("on", "1", "true")
+                        if self._set_kb_backlight_timeout_ec(enable):
+                            self.config["kb_backlight_timeout"] = enable
+                            self._save_config()
+                            response = {
+                                "status": "success",
+                                "message": f"Keyboard timeout → {'on' if enable else 'off'}",
+                            }
+                        else:
+                            response = {
+                                "status": "error",
+                                "message": "EC write failed",
+                            }
+
+            elif cmd == "SET_USB_CHARGE":
+                if len(parts) < 2:
+                    response = {"status": "error", "message": "Missing state"}
+                else:
+                    state = parts[1].lower()
+                    if state not in ("on", "off", "1", "0", "true", "false"):
+                        response = {"status": "error", "message": "Invalid state"}
+                    else:
+                        enable = state in ("on", "1", "true")
+                        if self._set_usb_charge_poweroff_ec(enable):
+                            self.config["usb_charge_poweroff"] = enable
+                            self._save_config()
+                            response = {
+                                "status": "success",
+                                "message": f"USB power-off charging → {'on' if enable else 'off'}",
                             }
                         else:
                             response = {

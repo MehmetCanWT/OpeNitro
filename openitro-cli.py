@@ -55,9 +55,15 @@ def print_status(data: dict):
     nitro = data.get("nitro_mode", "?").upper()
     power = "AC Plugged-in" if data.get("power_plugged") else "Battery"
     bat = "80% ENABLED" if data.get("battery_limit_active") else "Disabled (100%)"
+    cb = "ENABLED" if data.get("coolboost_active") else "Disabled"
+    kb = "ENABLED (30s timeout)" if data.get("kb_backlight_timeout") else "Disabled (Always-on)"
+    usb = "ENABLED" if data.get("usb_charge_poweroff") else "Disabled"
     print(f"  Power Mode:    {nitro}")
     print(f"  Power Source:  {power}")
     print(f"  Battery Limit: {bat}")
+    print(f"  CoolBoost:     {cb}")
+    print(f"  KB Timeout:    {kb}")
+    print(f"  USB Off-Chg:   {usb}")
     print("=" * 48)
 
 
@@ -80,6 +86,21 @@ def main():
         "-b", "--battery-limit",
         choices=["on", "off"],
         help="Toggle 80%% battery charge limit",
+    )
+    parser.add_argument(
+        "-c", "--coolboost",
+        choices=["on", "off"],
+        help="Toggle Acer CoolBoost",
+    )
+    parser.add_argument(
+        "-k", "--kb-timeout",
+        choices=["on", "off"],
+        help="Toggle keyboard backlight 30s timeout",
+    )
+    parser.add_argument(
+        "-u", "--usb-charge",
+        choices=["on", "off"],
+        help="Toggle USB charging when powered off",
     )
     parser.add_argument(
         "--cpu-fan",
@@ -137,6 +158,18 @@ def main():
         speed = args.gpu_speed if args.gpu_speed is not None else 100
         speed = max(0, min(200, speed))
         resp = send_command(f"SET_FAN_MODE gpu {args.gpu_fan} {speed}")
+        print(resp.get("message", ""))
+
+    if args.coolboost:
+        resp = send_command(f"SET_COOLBOOST {args.coolboost}")
+        print(resp.get("message", ""))
+
+    if args.kb_timeout:
+        resp = send_command(f"SET_KB_TIMEOUT {args.kb_timeout}")
+        print(resp.get("message", ""))
+
+    if args.usb_charge:
+        resp = send_command(f"SET_USB_CHARGE {args.usb_charge}")
         print(resp.get("message", ""))
 
 
