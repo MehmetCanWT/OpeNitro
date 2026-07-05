@@ -62,11 +62,6 @@ class OpeNitroEC:
     NITRO_MODE_DEFAULT = 0x01
     NITRO_MODE_EXTREME = 0x04
 
-    # CoolBoost
-    REG_COOLBOOST = 0x10
-    COOLBOOST_ON = 0x01
-    COOLBOOST_OFF = 0x00
-
     # Keyboard backlight 30s timeout
     REG_KB_TIMEOUT = 0x06
     KB_TIMEOUT_ON = 0x1E
@@ -206,6 +201,14 @@ class OpeNitroEC:
             return 0
         return self.buffer[address]
 
+    def set_fan_speed_ec(self, unit: str, speed: int) -> bool:
+        """Set manual fan speed (0-200) without modifying the fan mode register."""
+        if unit == "cpu":
+            reg_speed = self.REG_CPU_MANUAL_SPEED_CONTROL
+        else:
+            reg_speed = self.REG_GPU_MANUAL_SPEED_CONTROL
+        return self.ec_write(reg_speed, max(0, min(200, speed)))
+
     # ─── High-level helpers ───
 
     def get_status(self) -> dict:
@@ -244,7 +247,6 @@ class OpeNitroEC:
             "battery_limit_active": self.ec_read(self.REG_BATTERY_CHARGE_LIMIT)
             == self.BATTERY_LIMIT_ON,
             "nitro_mode": self._NITRO_MODE_MAP.get(nitro_mode_raw, "unknown"),
-            "coolboost_active": self.ec_read(self.REG_COOLBOOST) == self.COOLBOOST_ON,
             "kb_backlight_timeout": self.ec_read(self.REG_KB_TIMEOUT) == self.KB_TIMEOUT_ON,
             "usb_charge_poweroff": self.ec_read(self.REG_USB_CHARGE) == self.USB_CHARGE_ON,
         }

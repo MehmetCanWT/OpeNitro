@@ -185,8 +185,11 @@ class OpeNitroDaemon:
         return self.ec.ec_write(self.ec.REG_BATTERY_CHARGE_LIMIT, val)
 
     def _set_coolboost_ec(self, enable: bool) -> bool:
-        val = self.ec.COOLBOOST_ON if enable else self.ec.COOLBOOST_OFF
-        return self.ec.ec_write(self.ec.REG_COOLBOOST, val)
+        # CoolBoost is handled automatically by WMI / BIOS on modern laptops
+        return True
+
+    def _set_fan_speed_ec(self, unit: str, speed: int) -> bool:
+        return self.ec.set_fan_speed_ec(unit, speed)
 
     def _set_kb_backlight_timeout_ec(self, enable: bool) -> bool:
         val = self.ec.KB_TIMEOUT_ON if enable else self.ec.KB_TIMEOUT_OFF
@@ -211,15 +214,6 @@ class OpeNitroDaemon:
                     if actual_bat != expected_bat:
                         print(f"[monitor] Battery limit mismatch (got {hex(actual_bat)}, want {hex(expected_bat)}). Reinforcing…")
                         self._set_battery_limit_ec(want_bat)
-
-                    # 2. CoolBoost
-                    want_cb = self.config.get("coolboost_active", False)
-                    expected_cb = self.ec.COOLBOOST_ON if want_cb else self.ec.COOLBOOST_OFF
-                    actual_cb = self.ec.ec_read(self.ec.REG_COOLBOOST)
-                    if actual_cb != expected_cb:
-                        print(f"[monitor] CoolBoost mismatch (got {hex(actual_cb)}, want {hex(expected_cb)}). Reinforcing…")
-                        self._set_coolboost_ec(want_cb)
-
                     # 3. Keyboard Backlight Timeout
                     want_kb = self.config.get("kb_backlight_timeout", True)
                     expected_kb = self.ec.KB_TIMEOUT_ON if want_kb else self.ec.KB_TIMEOUT_OFF
@@ -489,12 +483,12 @@ class OpeNitroDaemon:
                         "cpu_manual_speed",
                         "gpu_manual_speed",
                         "nitro_mode",
-                        "coolboost_active",
                         "kb_backlight_timeout",
                         "usb_charge_poweroff",
                     ):
                         self.config[key] = status[key]
-                    # Merge RGB settings from config into status dict
+                    # Merge config settings into status dict
+                    status["coolboost_active"] = self.config.get("coolboost_active", False)
                     for k in ("rgb_mode", "rgb_red", "rgb_green", "rgb_blue", "rgb_brightness", "rgb_speed", "rgb_direction", "rgb_zone"):
                         status[k] = self.config.get(k, 0 if "mode" in k or "direction" in k or "zone" in k else (4 if "speed" in k else 100 if "brightness" in k else 255))
                     response = {"status": "success", "data": status}
@@ -543,6 +537,29 @@ class OpeNitroDaemon:
                         response = {
                             "status": "success",
                             "message": f"{unit.upper()} fan → {mode}",
+                        }
+                    else:
+                        response = {"status": "error", "message": "EC write failed"}
+
+            elif cmd == "SET_FAN_SPEED":
+                if len(parts) < 3:
+                    response = {"status": "error", "message": "Missing arguments"}
+                else:
+                    unit = parts[1].lower()
+                    try:
+                        speed = int(parts[2])
+                    except ValueError:
+                        speed = 100
+
+                    if unit not in ("cpu", "gpu"):
+                        response = {"status": "error", "message": "Invalid unit"}
+                    elif self._set_fan_speed_ec(unit, speed):
+                        self.config[f"{unit}_fan_mode"] = "manual"
+                        self.config[f"{unit}_manual_speed"] = speed
+                        self._save_config()
+                        response = {
+                            "status": "success",
+                            "message": f"{unit.upper()} fan speed → {speed}%",
                         }
                     else:
                         response = {"status": "error", "message": "EC write failed"}
