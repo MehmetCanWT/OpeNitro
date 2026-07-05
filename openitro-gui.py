@@ -256,234 +256,20 @@ class ToggleSwitch(QtWidgets.QWidget):
         painter.drawEllipse(QtCore.QRectF(x, handle_margin, handle_diameter, handle_diameter))
 
 
-# ─── Main Window ───
+class RGBDialog(QtWidgets.QDialog):
+    """Standalone floating dialog for WMI RGB Keyboard settings."""
 
-
-class OpeNitroWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.status_data: dict = {}
-        self._last_slider_change = {"cpu": 0.0, "gpu": 0.0}
-        self._build_ui()
-
-        self._poll_timer = QtCore.QTimer(self)
-        self._poll_timer.timeout.connect(self._request_status)
-        self._poll_timer.start(1000)
-        self._request_status()
-
-    # ─── Socket communication ───
-
-    def _send_command(self, cmd: str) -> dict:
-        try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(SOCKET_TIMEOUT)
-            sock.connect(SOCKET_PATH)
-            sock.sendall(cmd.encode("utf-8"))
-            resp = sock.recv(8192).decode("utf-8")
-            sock.close()
-            self._status_lbl.setText("Connected to openitrod daemon")
-            self._status_lbl.setStyleSheet("font-size: 8pt; color: #606067;")
-            return json.loads(resp)
-        except Exception:
-            self._status_lbl.setText("Connection error — is openitrod running?")
-            self._status_lbl.setStyleSheet("font-size: 8pt; color: #FF4D4D;")
-            return {}
-
-    def _request_status(self):
-        resp = self._send_command("GET_STATUS")
-        if resp.get("status") == "success":
-            self._update_ui(resp["data"])
-
-    # ─── UI Builder ───
-
-    def _build_ui(self):
-        self.setWindowTitle("OpeNitro Controller")
-        self.setFixedSize(720, 860)
-        self.setObjectName("MainWindow")
-
-        # Window Icon
-        icon_path = "/usr/share/pixmaps/openitro.png"
-        if not os.path.exists(icon_path):
-            local_icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openitro.png")
-            if os.path.exists(local_icon):
-                icon_path = local_icon
-            else:
-                icon_path = "/opt/openitro/openitro.png"
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QtGui.QIcon(icon_path))
-
+    def __init__(self, send_cmd_func, parent=None):
+        super().__init__(parent)
+        self.send_cmd = send_cmd_func
+        self.setWindowTitle("OpeNitro RGB Customizer")
+        self.setFixedSize(580, 310)
         self.setStyleSheet(_STYLESHEET)
+        self.setModal(False)
 
-        central = QtWidgets.QWidget()
-        central.setObjectName("MainWindow")
-        self.setCentralWidget(central)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(15, 15, 15, 15)
 
-        root = QtWidgets.QVBoxLayout(central)
-        root.setContentsMargins(20, 20, 20, 20)
-        root.setSpacing(15)
-
-        # Header
-        header = QtWidgets.QHBoxLayout()
-        title_box = QtWidgets.QVBoxLayout()
-        lbl = QtWidgets.QLabel("OpeNitro")
-        lbl.setStyleSheet("font-size: 20pt; font-weight: 800; color: #FFF; letter-spacing: 2px;")
-        title_box.addWidget(lbl)
-        sub = QtWidgets.QLabel("SYSTEM CONTROLLER")
-        sub.setStyleSheet("font-size: 8pt; font-weight: 600; color: #F05454; letter-spacing: 1px;")
-        title_box.addWidget(sub)
-        
-        self._model_lbl = QtWidgets.QLabel("Model: —")
-        self._model_lbl.setStyleSheet("font-size: 8pt; color: #808085; font-weight: bold; margin-top: 4px;")
-        self._serial_lbl = QtWidgets.QLabel("S/N: —")
-        self._serial_lbl.setStyleSheet("font-size: 8pt; color: #808085; font-weight: bold;")
-        title_box.addWidget(self._model_lbl)
-        title_box.addWidget(self._serial_lbl)
-        header.addLayout(title_box)
-        header.addStretch()
-
-        self._power_src_lbl = QtWidgets.QLabel("—")
-        self._power_src_lbl.setStyleSheet(
-            "font-size: 8pt; color: #A0A0A5; font-weight: bold; "
-            "background: #1E1E24; padding: 4px 10px; border-radius: 6px; "
-            "border: 1px solid #2C2C35;"
-        )
-        header.addWidget(self._power_src_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        root.addLayout(header)
-
-        # ── Performance Modes ──
-        mode_grp = QtWidgets.QGroupBox("PERFORMANCE MODE")
-        mode_lay = QtWidgets.QHBoxLayout(mode_grp)
-        mode_lay.setContentsMargins(15, 15, 15, 15)
-        mode_lay.setSpacing(10)
-
-        self._btn_quiet = self._mode_btn("QUIET", lambda: self._set_power_mode("quiet"))
-        self._btn_default = self._mode_btn("DEFAULT", lambda: self._set_power_mode("default"))
-        self._btn_extreme = self._mode_btn("EXTREME", lambda: self._set_power_mode("extreme"))
-
-        self._mode_group = QtWidgets.QButtonGroup(self)
-        for b in (self._btn_quiet, self._btn_default, self._btn_extreme):
-            self._mode_group.addButton(b)
-            mode_lay.addWidget(b)
-        root.addWidget(mode_grp)
-
-        # ── Fan Controls ──
-        fans = QtWidgets.QHBoxLayout()
-        fans.setSpacing(15)
-
-        # CPU
-        cpu_grp, self._cpu_temp, self._cpu_fan, self._cpu_rpm_lbl, \
-            self._btn_cpu_auto, self._btn_cpu_max, self._btn_cpu_manual, \
-            self._cpu_slider, self._cpu_slider_lbl, self._cpu_btn_grp = \
-            self._build_fan_group("CPU", "cpu")
-        fans.addWidget(cpu_grp)
-
-        # GPU
-        gpu_grp, self._gpu_temp, self._gpu_fan, self._gpu_rpm_lbl, \
-            self._btn_gpu_auto, self._btn_gpu_max, self._btn_gpu_manual, \
-            self._gpu_slider, self._gpu_slider_lbl, self._gpu_btn_grp = \
-            self._build_fan_group("GPU", "gpu")
-        fans.addWidget(gpu_grp)
-
-        root.addLayout(fans)
-
-        # ── System Settings & Health ──
-        sys_grp = QtWidgets.QGroupBox("SYSTEM SETTINGS & HEALTH")
-        sys_lay = QtWidgets.QVBoxLayout(sys_grp)
-        sys_lay.setContentsMargins(20, 15, 20, 15)
-        sys_lay.setSpacing(10)
-
-        # Row 1: Battery limit
-        row1 = QtWidgets.QHBoxLayout()
-        desc1 = QtWidgets.QVBoxLayout()
-        t1 = QtWidgets.QLabel("80% Charge Limit")
-        t1.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
-        desc1.addWidget(t1)
-        s1 = QtWidgets.QLabel("Preserves battery health by stopping charge at 80%")
-        s1.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
-        desc1.addWidget(s1)
-        row1.addLayout(desc1)
-        row1.addStretch()
-
-        self._bat_toggle = ToggleSwitch()
-        self._bat_toggle.toggled.connect(self._toggle_battery_limit)
-        row1.addWidget(self._bat_toggle)
-        sys_lay.addLayout(row1)
-
-        # Divider 1
-        div1 = QtWidgets.QFrame()
-        div1.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        div1.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        div1.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
-        sys_lay.addWidget(div1)
-
-        # Row 2: CoolBoost
-        row2 = QtWidgets.QHBoxLayout()
-        desc2 = QtWidgets.QVBoxLayout()
-        t2 = QtWidgets.QLabel("Acer CoolBoost")
-        t2.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
-        desc2.addWidget(t2)
-        s2 = QtWidgets.QLabel("Delivers higher maximum fan speed and cooling under load")
-        s2.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
-        desc2.addWidget(s2)
-        row2.addLayout(desc2)
-        row2.addStretch()
-
-        self._cb_toggle = ToggleSwitch()
-        self._cb_toggle.toggled.connect(self._toggle_coolboost)
-        row2.addWidget(self._cb_toggle)
-        sys_lay.addLayout(row2)
-
-        # Divider 2
-        div2 = QtWidgets.QFrame()
-        div2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        div2.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        div2.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
-        sys_lay.addWidget(div2)
-
-        # Row 3: Keyboard timeout
-        row3 = QtWidgets.QHBoxLayout()
-        desc3 = QtWidgets.QVBoxLayout()
-        t3 = QtWidgets.QLabel("Keyboard Backlight Timeout")
-        t3.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
-        desc3.addWidget(t3)
-        s3 = QtWidgets.QLabel("Automatically turns off the keyboard backlight after 30 seconds of inactivity")
-        s3.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
-        desc3.addWidget(s3)
-        row3.addLayout(desc3)
-        row3.addStretch()
-
-        self._kb_toggle = ToggleSwitch()
-        self._kb_toggle.toggled.connect(self._toggle_kb_timeout)
-        row3.addWidget(self._kb_toggle)
-        sys_lay.addLayout(row3)
-
-        # Divider 3
-        div3 = QtWidgets.QFrame()
-        div3.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        div3.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        div3.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
-        sys_lay.addWidget(div3)
-
-        # Row 4: USB Power-off Charging
-        row4 = QtWidgets.QHBoxLayout()
-        desc4 = QtWidgets.QVBoxLayout()
-        t4 = QtWidgets.QLabel("USB Power-off Charging")
-        t4.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
-        desc4.addWidget(t4)
-        s4 = QtWidgets.QLabel("Allows charging external devices from USB ports when laptop is shut down")
-        s4.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
-        desc4.addWidget(s4)
-        row4.addLayout(desc4)
-        row4.addStretch()
-
-        self._usb_toggle = ToggleSwitch()
-        self._usb_toggle.toggled.connect(self._toggle_usb_charge)
-        row4.addWidget(self._usb_toggle)
-        sys_lay.addLayout(row4)
-
-        root.addWidget(sys_grp)
-
-        # ── RGB Keyboard Control ──
         self._rgb_grp = QtWidgets.QGroupBox("RGB KEYBOARD CONTROL")
         rgb_lay = QtWidgets.QHBoxLayout(self._rgb_grp)
         rgb_lay.setContentsMargins(15, 12, 15, 12)
@@ -597,13 +383,328 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         right_col.addLayout(color_picker_lay)
         rgb_lay.addLayout(right_col, 2)
 
-        root.addWidget(self._rgb_grp)
-        self._rgb_grp.hide()
+        lay.addWidget(self._rgb_grp)
+
+    def _update_rgb_ui_elements(self):
+        mode = self._rgb_mode_combo.currentIndex()
+        is_static = (mode == 0)
+        self._rgb_zone_combo.setEnabled(is_static)
+        self._rgb_zone_combo.setVisible(is_static)
+        self._rgb_zone_lbl.setVisible(is_static)
+
+        has_speed = (mode > 0)
+        self._rgb_speed_slider.setEnabled(has_speed)
+        self._rgb_speed_slider.setVisible(has_speed)
+        self._rgb_speed_lbl.setVisible(has_speed)
+        self._rgb_speed_title.setVisible(has_speed)
+
+        has_dir = (mode == 3)
+        self._rgb_dir_combo.setEnabled(has_dir)
+        self._rgb_dir_combo.setVisible(has_dir)
+        self._rgb_dir_lbl.setVisible(has_dir)
+
+        has_color = (mode in (0, 1, 4, 5))
+        self._rgb_r_slider.setEnabled(has_color)
+        self._rgb_g_slider.setEnabled(has_color)
+        self._rgb_b_slider.setEnabled(has_color)
+        self._rgb_r_slider.setVisible(has_color)
+        self._rgb_g_slider.setVisible(has_color)
+        self._rgb_b_slider.setVisible(has_color)
+        self._rgb_preview.setVisible(has_color)
+
+    def _update_color_preview(self):
+        r = self._rgb_r_slider.value()
+        g = self._rgb_g_slider.value()
+        b = self._rgb_b_slider.value()
+        self._rgb_preview.setStyleSheet(
+            f"border-radius: 6px; border: 1.5px solid #2C2C39; "
+            f"background-color: rgb({r}, {g}, {b});"
+        )
+
+    def _on_rgb_config_changed(self):
+        mode = self._rgb_mode_combo.currentIndex()
+        r = self._rgb_r_slider.value()
+        g = self._rgb_g_slider.value()
+        b = self._rgb_b_slider.value()
+        bright = self._rgb_bright_slider.value()
+        speed = self._rgb_speed_slider.value()
+        direction = self._rgb_dir_combo.currentIndex() + 1
+        zone = self._rgb_zone_combo.currentIndex() + 1
+
+        self._update_rgb_ui_elements()
+        self._update_color_preview()
+
+        self.send_cmd(f"SET_RGB {mode} {r} {g} {b} {bright} {speed} {direction} {zone}")
+
+    def update_data(self, data: dict):
+        for w in (self._rgb_mode_combo, self._rgb_zone_combo, self._rgb_bright_slider,
+                  self._rgb_speed_slider, self._rgb_dir_combo, self._rgb_r_slider,
+                  self._rgb_g_slider, self._rgb_b_slider):
+            w.blockSignals(True)
+
+        self._rgb_mode_combo.setCurrentIndex(data.get("rgb_mode", 0))
+        self._rgb_zone_combo.setCurrentIndex(data.get("rgb_zone", 1) - 1)
+        self._rgb_bright_slider.setValue(data.get("rgb_brightness", 100))
+        self._rgb_bright_lbl.setText(str(data.get("rgb_brightness", 100)))
+        self._rgb_speed_slider.setValue(data.get("rgb_speed", 4))
+        self._rgb_speed_lbl.setText(str(data.get("rgb_speed", 4)))
+        self._rgb_dir_combo.setCurrentIndex(data.get("rgb_direction", 1) - 1)
+        self._rgb_r_slider.setValue(data.get("rgb_red", 255))
+        self._rgb_r_lbl.setText(str(data.get("rgb_red", 255)))
+        self._rgb_g_slider.setValue(data.get("rgb_green", 62))
+        self._rgb_g_lbl.setText(str(data.get("rgb_green", 62)))
+        self._rgb_b_slider.setValue(data.get("rgb_blue", 108))
+        self._rgb_b_lbl.setText(str(data.get("rgb_blue", 108)))
+
+        for w in (self._rgb_mode_combo, self._rgb_zone_combo, self._rgb_bright_slider,
+                  self._rgb_speed_slider, self._rgb_dir_combo, self._rgb_r_slider,
+                  self._rgb_g_slider, self._rgb_b_slider):
+            w.blockSignals(False)
+
+        self._update_rgb_ui_elements()
+        self._update_color_preview()
+
+
+# ─── Main Window ───
+
+
+class OpeNitroWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.status_data: dict = {}
+        self.rgb_dialog = None
+        self._last_slider_change = {"cpu": 0.0, "gpu": 0.0}
+        self._build_ui()
+
+        self._poll_timer = QtCore.QTimer(self)
+        self._poll_timer.timeout.connect(self._request_status)
+        self._poll_timer.start(1000)
+        self._request_status()
+
+    # ─── Socket communication ───
+
+    def _send_command(self, cmd: str) -> dict:
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(SOCKET_TIMEOUT)
+            sock.connect(SOCKET_PATH)
+            sock.sendall(cmd.encode("utf-8"))
+            resp = sock.recv(8192).decode("utf-8")
+            sock.close()
+            self._status_lbl.setText("Connected to openitrod daemon")
+            self._status_lbl.setStyleSheet("font-size: 8pt; color: #606067;")
+            return json.loads(resp)
+        except Exception:
+            self._status_lbl.setText("Connection error — is openitrod running?")
+            self._status_lbl.setStyleSheet("font-size: 8pt; color: #FF4D4D;")
+            return {}
+
+    def _request_status(self):
+        resp = self._send_command("GET_STATUS")
+        if resp.get("status") == "success":
+            self._update_ui(resp["data"])
+
+    # ─── UI Builder ───
+
+    def _build_ui(self):
+        self.setWindowTitle("OpeNitro Controller")
+        self.setFixedWidth(840)
+        self.setObjectName("MainWindow")
+
+        # Window Icon
+        icon_path = "/usr/share/pixmaps/openitro.png"
+        if not os.path.exists(icon_path):
+            local_icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openitro.png")
+            if os.path.exists(local_icon):
+                icon_path = local_icon
+            else:
+                icon_path = "/opt/openitro/openitro.png"
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QtGui.QIcon(icon_path))
+
+        self.setStyleSheet(_STYLESHEET)
+
+        central = QtWidgets.QWidget()
+        central.setObjectName("MainWindow")
+        self.setCentralWidget(central)
+
+        root = QtWidgets.QVBoxLayout(central)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(25)
+
+        # Header
+        header = QtWidgets.QHBoxLayout()
+        title_box = QtWidgets.QVBoxLayout()
+        lbl = QtWidgets.QLabel("OpeNitro")
+        lbl.setStyleSheet("font-size: 20pt; font-weight: 800; color: #FFF; letter-spacing: 2px;")
+        title_box.addWidget(lbl)
+        sub = QtWidgets.QLabel("SYSTEM CONTROLLER")
+        sub.setStyleSheet("font-size: 8pt; font-weight: 600; color: #F05454; letter-spacing: 1px;")
+        title_box.addWidget(sub)
+        
+        self._model_lbl = QtWidgets.QLabel("Model: —")
+        self._model_lbl.setStyleSheet("font-size: 8pt; color: #808085; font-weight: bold; margin-top: 4px;")
+        self._serial_lbl = QtWidgets.QLabel("S/N: —")
+        self._serial_lbl.setStyleSheet("font-size: 8pt; color: #808085; font-weight: bold;")
+        title_box.addWidget(self._model_lbl)
+        title_box.addWidget(self._serial_lbl)
+        header.addLayout(title_box)
+        header.addStretch()
+
+        self._rgb_btn = QtWidgets.QPushButton("⌨ RGB Keyboard")
+        self._rgb_btn.setObjectName("RGBButton")
+        self._rgb_btn.clicked.connect(self._open_rgb_dialog)
+        self._rgb_btn.hide()
+        header.addWidget(self._rgb_btn, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        self._power_src_lbl = QtWidgets.QLabel("—")
+        self._power_src_lbl.setStyleSheet(
+            "font-size: 8pt; color: #A0A0A5; font-weight: bold; "
+            "background: #1E1E24; padding: 4px 10px; border-radius: 6px; "
+            "border: 1px solid #2C2C35;"
+        )
+        header.addWidget(self._power_src_lbl, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        root.addLayout(header)
+
+        # ── Performance Modes ──
+        mode_grp = QtWidgets.QGroupBox("PERFORMANCE MODE")
+        mode_lay = QtWidgets.QHBoxLayout(mode_grp)
+        mode_lay.setContentsMargins(15, 25, 15, 15)
+        mode_lay.setSpacing(10)
+
+        self._btn_quiet = self._mode_btn("QUIET", lambda: self._set_power_mode("quiet"))
+        self._btn_default = self._mode_btn("DEFAULT", lambda: self._set_power_mode("default"))
+        self._btn_extreme = self._mode_btn("EXTREME", lambda: self._set_power_mode("extreme"))
+
+        self._mode_group = QtWidgets.QButtonGroup(self)
+        for b in (self._btn_quiet, self._btn_default, self._btn_extreme):
+            self._mode_group.addButton(b)
+            mode_lay.addWidget(b)
+        root.addWidget(mode_grp)
+
+        # ── Fan Controls ──
+        fans = QtWidgets.QHBoxLayout()
+        fans.setSpacing(15)
+
+        # CPU
+        cpu_grp, self._cpu_temp, self._cpu_fan, self._cpu_rpm_lbl, \
+            self._btn_cpu_auto, self._btn_cpu_max, self._btn_cpu_manual, \
+            self._cpu_slider, self._cpu_slider_lbl, self._cpu_btn_grp = \
+            self._build_fan_group("CPU", "cpu")
+        fans.addWidget(cpu_grp)
+
+        # GPU
+        gpu_grp, self._gpu_temp, self._gpu_fan, self._gpu_rpm_lbl, \
+            self._btn_gpu_auto, self._btn_gpu_max, self._btn_gpu_manual, \
+            self._gpu_slider, self._gpu_slider_lbl, self._gpu_btn_grp = \
+            self._build_fan_group("GPU", "gpu")
+        fans.addWidget(gpu_grp)
+
+        root.addLayout(fans)
+
+        # ── System Settings & Health ──
+        sys_grp = QtWidgets.QGroupBox("SYSTEM SETTINGS && HEALTH")
+        sys_lay = QtWidgets.QVBoxLayout(sys_grp)
+        sys_lay.setContentsMargins(20, 25, 20, 15)
+        sys_lay.setSpacing(10)
+
+        # Row 1: Battery limit
+        row1 = QtWidgets.QHBoxLayout()
+        desc1 = QtWidgets.QVBoxLayout()
+        t1 = QtWidgets.QLabel("80% Charge Limit")
+        t1.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc1.addWidget(t1)
+        s1 = QtWidgets.QLabel("Preserves battery health by stopping charge at 80%")
+        s1.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc1.addWidget(s1)
+        row1.addLayout(desc1)
+        row1.addStretch()
+
+        self._bat_toggle = ToggleSwitch()
+        self._bat_toggle.toggled.connect(self._toggle_battery_limit)
+        row1.addWidget(self._bat_toggle)
+        sys_lay.addLayout(row1)
+
+        # Divider 1
+        div1 = QtWidgets.QFrame()
+        div1.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        div1.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        div1.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
+        sys_lay.addWidget(div1)
+
+        # Row 2: CoolBoost
+        row2 = QtWidgets.QHBoxLayout()
+        desc2 = QtWidgets.QVBoxLayout()
+        t2 = QtWidgets.QLabel("Acer CoolBoost")
+        t2.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc2.addWidget(t2)
+        s2 = QtWidgets.QLabel("Delivers higher maximum fan speed and cooling under load")
+        s2.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc2.addWidget(s2)
+        row2.addLayout(desc2)
+        row2.addStretch()
+
+        self._cb_toggle = ToggleSwitch()
+        self._cb_toggle.toggled.connect(self._toggle_coolboost)
+        row2.addWidget(self._cb_toggle)
+        sys_lay.addLayout(row2)
+
+        # Divider 2
+        div2 = QtWidgets.QFrame()
+        div2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        div2.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        div2.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
+        sys_lay.addWidget(div2)
+
+        # Row 3: Keyboard timeout
+        row3 = QtWidgets.QHBoxLayout()
+        desc3 = QtWidgets.QVBoxLayout()
+        t3 = QtWidgets.QLabel("Keyboard Backlight Timeout")
+        t3.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc3.addWidget(t3)
+        s3 = QtWidgets.QLabel("Automatically turns off the keyboard backlight after 30 seconds of inactivity")
+        s3.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc3.addWidget(s3)
+        row3.addLayout(desc3)
+        row3.addStretch()
+
+        self._kb_toggle = ToggleSwitch()
+        self._kb_toggle.toggled.connect(self._toggle_kb_timeout)
+        row3.addWidget(self._kb_toggle)
+        sys_lay.addLayout(row3)
+
+        # Divider 3
+        div3 = QtWidgets.QFrame()
+        div3.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        div3.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        div3.setStyleSheet("background-color: #232328; max-height: 1px; border: none;")
+        sys_lay.addWidget(div3)
+
+        # Row 4: USB Power-off Charging
+        row4 = QtWidgets.QHBoxLayout()
+        desc4 = QtWidgets.QVBoxLayout()
+        t4 = QtWidgets.QLabel("USB Power-off Charging")
+        t4.setStyleSheet("font-size: 11pt; font-weight: bold; color: #FFF;")
+        desc4.addWidget(t4)
+        s4 = QtWidgets.QLabel("Allows charging external devices from USB ports when laptop is shut down")
+        s4.setStyleSheet("font-size: 8pt; color: #A0A0A5;")
+        desc4.addWidget(s4)
+        row4.addLayout(desc4)
+        row4.addStretch()
+
+        self._usb_toggle = ToggleSwitch()
+        self._usb_toggle.toggled.connect(self._toggle_usb_charge)
+        row4.addWidget(self._usb_toggle)
+        sys_lay.addLayout(row4)
+
+        root.addWidget(sys_grp)
 
         # Status
         self._status_lbl = QtWidgets.QLabel("Starting…")
         self._status_lbl.setStyleSheet("font-size: 8pt; color: #606067; margin-top: 5px;")
         root.addWidget(self._status_lbl)
+
+        self.adjustSize()
 
     # ─── UI helpers ───
 
@@ -618,7 +719,7 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
     def _build_fan_group(self, label: str, unit: str):
         grp = QtWidgets.QGroupBox(f"{label} FAN CONTROL")
         lay = QtWidgets.QVBoxLayout(grp)
-        lay.setContentsMargins(15, 15, 15, 15)
+        lay.setContentsMargins(15, 25, 15, 15)
         lay.setSpacing(10)
 
         metrics = QtWidgets.QHBoxLayout()
@@ -729,42 +830,11 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         self._model_lbl.setText(f"Model: {data.get('model', 'Unknown')}")
         self._serial_lbl.setText(f"S/N: {data.get('product_serial', 'Unknown')}")
 
-        # RGB keyboard dynamic section
+        # RGB keyboard dynamic section button & update
         rgb_sup = data.get("rgb_supported", False)
-        if rgb_sup != self._rgb_grp.isVisible():
-            self._rgb_grp.setVisible(rgb_sup)
-            if rgb_sup:
-                self.setFixedSize(720, 1020)
-            else:
-                self.setFixedSize(720, 860)
-
-        if rgb_sup:
-            for w in (self._rgb_mode_combo, self._rgb_zone_combo, self._rgb_bright_slider,
-                      self._rgb_speed_slider, self._rgb_dir_combo, self._rgb_r_slider,
-                      self._rgb_g_slider, self._rgb_b_slider):
-                w.blockSignals(True)
-
-            self._rgb_mode_combo.setCurrentIndex(data.get("rgb_mode", 0))
-            self._rgb_zone_combo.setCurrentIndex(data.get("rgb_zone", 1) - 1)
-            self._rgb_bright_slider.setValue(data.get("rgb_brightness", 100))
-            self._rgb_bright_lbl.setText(str(data.get("rgb_brightness", 100)))
-            self._rgb_speed_slider.setValue(data.get("rgb_speed", 4))
-            self._rgb_speed_lbl.setText(str(data.get("rgb_speed", 4)))
-            self._rgb_dir_combo.setCurrentIndex(data.get("rgb_direction", 1) - 1)
-            self._rgb_r_slider.setValue(data.get("rgb_red", 255))
-            self._rgb_r_lbl.setText(str(data.get("rgb_red", 255)))
-            self._rgb_g_slider.setValue(data.get("rgb_green", 62))
-            self._rgb_g_lbl.setText(str(data.get("rgb_green", 62)))
-            self._rgb_b_slider.setValue(data.get("rgb_blue", 108))
-            self._rgb_b_lbl.setText(str(data.get("rgb_blue", 108)))
-
-            for w in (self._rgb_mode_combo, self._rgb_zone_combo, self._rgb_bright_slider,
-                      self._rgb_speed_slider, self._rgb_dir_combo, self._rgb_r_slider,
-                      self._rgb_g_slider, self._rgb_b_slider):
-                w.blockSignals(False)
-
-            self._update_rgb_ui_elements()
-            self._update_color_preview()
+        self._rgb_btn.setVisible(rgb_sup)
+        if rgb_sup and self.rgb_dialog and self.rgb_dialog.isVisible():
+            self.rgb_dialog.update_data(data)
 
     def _register_slider_interaction(self, unit: str):
         self._last_slider_change[unit] = time.time()
@@ -822,56 +892,13 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
     def _toggle_usb_charge(self, checked: bool):
         self._send_command(f"SET_USB_CHARGE {'on' if checked else 'off'}")
 
-    def _update_rgb_ui_elements(self):
-        mode = self._rgb_mode_combo.currentIndex()
-        is_static = (mode == 0)
-        self._rgb_zone_combo.setEnabled(is_static)
-        self._rgb_zone_combo.setVisible(is_static)
-        self._rgb_zone_lbl.setVisible(is_static)
-
-        has_speed = (mode > 0)
-        self._rgb_speed_slider.setEnabled(has_speed)
-        self._rgb_speed_slider.setVisible(has_speed)
-        self._rgb_speed_lbl.setVisible(has_speed)
-        self._rgb_speed_title.setVisible(has_speed)
-
-        has_dir = (mode == 3)
-        self._rgb_dir_combo.setEnabled(has_dir)
-        self._rgb_dir_combo.setVisible(has_dir)
-        self._rgb_dir_lbl.setVisible(has_dir)
-
-        has_color = (mode in (0, 1, 4, 5))
-        self._rgb_r_slider.setEnabled(has_color)
-        self._rgb_g_slider.setEnabled(has_color)
-        self._rgb_b_slider.setEnabled(has_color)
-        self._rgb_r_slider.setVisible(has_color)
-        self._rgb_g_slider.setVisible(has_color)
-        self._rgb_b_slider.setVisible(has_color)
-        self._rgb_preview.setVisible(has_color)
-
-    def _update_color_preview(self):
-        r = self._rgb_r_slider.value()
-        g = self._rgb_g_slider.value()
-        b = self._rgb_b_slider.value()
-        self._rgb_preview.setStyleSheet(
-            f"border-radius: 6px; border: 1.5px solid #2C2C39; "
-            f"background-color: rgb({r}, {g}, {b});"
-        )
-
-    def _on_rgb_config_changed(self):
-        mode = self._rgb_mode_combo.currentIndex()
-        r = self._rgb_r_slider.value()
-        g = self._rgb_g_slider.value()
-        b = self._rgb_b_slider.value()
-        bright = self._rgb_bright_slider.value()
-        speed = self._rgb_speed_slider.value()
-        direction = self._rgb_dir_combo.currentIndex() + 1
-        zone = self._rgb_zone_combo.currentIndex() + 1
-
-        self._update_rgb_ui_elements()
-        self._update_color_preview()
-
-        self._send_command(f"SET_RGB {mode} {r} {g} {b} {bright} {speed} {direction} {zone}")
+    def _open_rgb_dialog(self):
+        if not self.rgb_dialog:
+            self.rgb_dialog = RGBDialog(self._send_command, self)
+        self.rgb_dialog.update_data(self.status_data)
+        self.rgb_dialog.show()
+        self.rgb_dialog.raise_()
+        self.rgb_dialog.activateWindow()
 
     def closeEvent(self, event):
         self._poll_timer.stop()
@@ -881,26 +908,28 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 # ─── Stylesheet ───
 
 _STYLESHEET = """
-QWidget#MainWindow { background-color: #0C0C0E; }
+QWidget#MainWindow, QDialog { background-color: #0C0C0E; }
 QLabel {
     color: #E2E2E9;
     font-family: "Outfit", "Inter", "Segoe UI", sans-serif;
+    padding: 2px 0px;
 }
 QGroupBox {
     border: 1px solid #22222B;
     border-radius: 12px;
     background-color: #131318;
-    margin-top: 15px;
     padding: 12px;
 }
 QGroupBox::title {
-    subcontrol-origin: margin;
+    subcontrol-origin: border;
     subcontrol-position: top center;
-    padding: 0 12px;
+    padding: 0 10px;
     color: #FF3E6C;
     font-weight: 800;
     font-size: 11pt;
     letter-spacing: 1px;
+    top: -10px;
+    background-color: #0C0C0E;
 }
 QPushButton {
     background-color: #1C1C24;
@@ -910,6 +939,20 @@ QPushButton {
     padding: 8px 16px;
     font-size: 9pt;
     font-weight: bold;
+}
+QPushButton#RGBButton {
+    background-color: #1C1C24;
+    border: 1px solid #2C2C39;
+    border-radius: 6px;
+    color: #E2E2E9;
+    padding: 5px 12px;
+    font-size: 8.5pt;
+    font-weight: bold;
+}
+QPushButton#RGBButton:hover {
+    background-color: #252530;
+    border-color: #FF3E6C;
+    color: #FFFFFF;
 }
 QPushButton:hover {
     background-color: #252530;
