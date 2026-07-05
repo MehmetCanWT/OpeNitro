@@ -298,7 +298,7 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self):
         self.setWindowTitle("OpeNitro Controller")
-        self.setFixedSize(720, 890)
+        self.setFixedSize(720, 860)
         self.setObjectName("MainWindow")
 
         # Window Icon
@@ -331,6 +331,13 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         sub = QtWidgets.QLabel("SYSTEM CONTROLLER")
         sub.setStyleSheet("font-size: 8pt; font-weight: 600; color: #F05454; letter-spacing: 1px;")
         title_box.addWidget(sub)
+        
+        self._model_lbl = QtWidgets.QLabel("Model: —")
+        self._model_lbl.setStyleSheet("font-size: 8pt; color: #808085; font-weight: bold; margin-top: 4px;")
+        self._serial_lbl = QtWidgets.QLabel("S/N: —")
+        self._serial_lbl.setStyleSheet("font-size: 8pt; color: #808085; font-weight: bold;")
+        title_box.addWidget(self._model_lbl)
+        title_box.addWidget(self._serial_lbl)
         header.addLayout(title_box)
         header.addStretch()
 
@@ -476,6 +483,123 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
         root.addWidget(sys_grp)
 
+        # ── RGB Keyboard Control ──
+        self._rgb_grp = QtWidgets.QGroupBox("RGB KEYBOARD CONTROL")
+        rgb_lay = QtWidgets.QHBoxLayout(self._rgb_grp)
+        rgb_lay.setContentsMargins(15, 12, 15, 12)
+        rgb_lay.setSpacing(15)
+
+        # Left column: controls
+        left_col = QtWidgets.QVBoxLayout()
+        left_col.setSpacing(6)
+
+        mode_zone_lay = QtWidgets.QHBoxLayout()
+        self._rgb_mode_combo = QtWidgets.QComboBox()
+        self._rgb_mode_combo.addItems(["Static", "Breath", "Neon", "Wave", "Shifting", "Zoom"])
+        self._rgb_mode_combo.currentIndexChanged.connect(self._on_rgb_config_changed)
+        mode_zone_lay.addWidget(QtWidgets.QLabel("Mode:"))
+        mode_zone_lay.addWidget(self._rgb_mode_combo)
+
+        self._rgb_zone_lbl = QtWidgets.QLabel("Zone:")
+        self._rgb_zone_combo = QtWidgets.QComboBox()
+        self._rgb_zone_combo.addItems(["Zone 1", "Zone 2", "Zone 3", "Zone 4"])
+        self._rgb_zone_combo.currentIndexChanged.connect(self._on_rgb_config_changed)
+        mode_zone_lay.addWidget(self._rgb_zone_lbl)
+        mode_zone_lay.addWidget(self._rgb_zone_combo)
+        left_col.addLayout(mode_zone_lay)
+
+        bright_lay = QtWidgets.QHBoxLayout()
+        bright_lay.addWidget(QtWidgets.QLabel("Bright:"))
+        self._rgb_bright_slider = ClickSlider(QtCore.Qt.Orientation.Horizontal)
+        self._rgb_bright_slider.setRange(0, 100)
+        self._rgb_bright_slider.sliderReleased.connect(self._on_rgb_config_changed)
+        self._rgb_bright_lbl = QtWidgets.QLabel("100")
+        self._rgb_bright_lbl.setFixedWidth(25)
+        self._rgb_bright_slider.valueChanged.connect(lambda v: self._rgb_bright_lbl.setText(str(v)))
+        bright_lay.addWidget(self._rgb_bright_slider)
+        bright_lay.addWidget(self._rgb_bright_lbl)
+        left_col.addLayout(bright_lay)
+
+        speed_dir_lay = QtWidgets.QHBoxLayout()
+        self._rgb_speed_title = QtWidgets.QLabel("Speed:")
+        self._rgb_speed_slider = ClickSlider(QtCore.Qt.Orientation.Horizontal)
+        self._rgb_speed_slider.setRange(1, 9)
+        self._rgb_speed_slider.sliderReleased.connect(self._on_rgb_config_changed)
+        self._rgb_speed_lbl = QtWidgets.QLabel("4")
+        self._rgb_speed_lbl.setFixedWidth(15)
+        self._rgb_speed_slider.valueChanged.connect(lambda v: self._rgb_speed_lbl.setText(str(v)))
+        speed_dir_lay.addWidget(self._rgb_speed_title)
+        speed_dir_lay.addWidget(self._rgb_speed_slider)
+        speed_dir_lay.addWidget(self._rgb_speed_lbl)
+
+        self._rgb_dir_lbl = QtWidgets.QLabel("Dir:")
+        self._rgb_dir_combo = QtWidgets.QComboBox()
+        self._rgb_dir_combo.addItems(["R ➔ L", "L ➔ R"])
+        self._rgb_dir_combo.currentIndexChanged.connect(self._on_rgb_config_changed)
+        speed_dir_lay.addWidget(self._rgb_dir_lbl)
+        speed_dir_lay.addWidget(self._rgb_dir_combo)
+        left_col.addLayout(speed_dir_lay)
+        rgb_lay.addLayout(left_col, 3)
+
+        # Right column: Color selection & preview
+        right_col = QtWidgets.QVBoxLayout()
+        right_col.setSpacing(4)
+        
+        self._rgb_preview = QtWidgets.QFrame()
+        self._rgb_preview.setFixedSize(65, 45)
+        self._rgb_preview.setStyleSheet("border-radius: 6px; border: 1.5px solid #2C2C39; background-color: #FF3E6C;")
+
+        color_sliders_lay = QtWidgets.QVBoxLayout()
+        color_sliders_lay.setSpacing(4)
+
+        r_lay = QtWidgets.QHBoxLayout()
+        r_lay.addWidget(QtWidgets.QLabel("R:"))
+        self._rgb_r_slider = ClickSlider(QtCore.Qt.Orientation.Horizontal)
+        self._rgb_r_slider.setRange(0, 255)
+        self._rgb_r_slider.sliderReleased.connect(self._on_rgb_config_changed)
+        self._rgb_r_slider.valueChanged.connect(lambda v: self._rgb_r_lbl.setText(str(v)))
+        self._rgb_r_slider.valueChanged.connect(lambda v: self._update_color_preview())
+        self._rgb_r_lbl = QtWidgets.QLabel("255")
+        self._rgb_r_lbl.setFixedWidth(25)
+        r_lay.addWidget(self._rgb_r_slider)
+        r_lay.addWidget(self._rgb_r_lbl)
+        color_sliders_lay.addLayout(r_lay)
+
+        g_lay = QtWidgets.QHBoxLayout()
+        g_lay.addWidget(QtWidgets.QLabel("G:"))
+        self._rgb_g_slider = ClickSlider(QtCore.Qt.Orientation.Horizontal)
+        self._rgb_g_slider.setRange(0, 255)
+        self._rgb_g_slider.sliderReleased.connect(self._on_rgb_config_changed)
+        self._rgb_g_slider.valueChanged.connect(lambda v: self._rgb_g_lbl.setText(str(v)))
+        self._rgb_g_slider.valueChanged.connect(lambda v: self._update_color_preview())
+        self._rgb_g_lbl = QtWidgets.QLabel("62")
+        self._rgb_g_lbl.setFixedWidth(25)
+        g_lay.addWidget(self._rgb_g_slider)
+        g_lay.addWidget(self._rgb_g_lbl)
+        color_sliders_lay.addLayout(g_lay)
+
+        b_lay = QtWidgets.QHBoxLayout()
+        b_lay.addWidget(QtWidgets.QLabel("B:"))
+        self._rgb_b_slider = ClickSlider(QtCore.Qt.Orientation.Horizontal)
+        self._rgb_b_slider.setRange(0, 255)
+        self._rgb_b_slider.sliderReleased.connect(self._on_rgb_config_changed)
+        self._rgb_b_slider.valueChanged.connect(lambda v: self._rgb_b_lbl.setText(str(v)))
+        self._rgb_b_slider.valueChanged.connect(lambda v: self._update_color_preview())
+        self._rgb_b_lbl = QtWidgets.QLabel("108")
+        self._rgb_b_lbl.setFixedWidth(25)
+        b_lay.addWidget(self._rgb_b_slider)
+        b_lay.addWidget(self._rgb_b_lbl)
+        color_sliders_lay.addLayout(b_lay)
+
+        color_picker_lay = QtWidgets.QHBoxLayout()
+        color_picker_lay.addLayout(color_sliders_lay, 3)
+        color_picker_lay.addWidget(self._rgb_preview, 1, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        right_col.addLayout(color_picker_lay)
+        rgb_lay.addLayout(right_col, 2)
+
+        root.addWidget(self._rgb_grp)
+        self._rgb_grp.hide()
+
         # Status
         self._status_lbl = QtWidgets.QLabel("Starting…")
         self._status_lbl.setStyleSheet("font-size: 8pt; color: #606067; margin-top: 5px;")
@@ -601,6 +725,47 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
         self._usb_toggle.setChecked(data.get("usb_charge_poweroff", False))
         self._usb_toggle.blockSignals(False)
 
+        # Model & Serial Info display
+        self._model_lbl.setText(f"Model: {data.get('model', 'Unknown')}")
+        self._serial_lbl.setText(f"S/N: {data.get('product_serial', 'Unknown')}")
+
+        # RGB keyboard dynamic section
+        rgb_sup = data.get("rgb_supported", False)
+        if rgb_sup != self._rgb_grp.isVisible():
+            self._rgb_grp.setVisible(rgb_sup)
+            if rgb_sup:
+                self.setFixedSize(720, 1020)
+            else:
+                self.setFixedSize(720, 860)
+
+        if rgb_sup:
+            for w in (self._rgb_mode_combo, self._rgb_zone_combo, self._rgb_bright_slider,
+                      self._rgb_speed_slider, self._rgb_dir_combo, self._rgb_r_slider,
+                      self._rgb_g_slider, self._rgb_b_slider):
+                w.blockSignals(True)
+
+            self._rgb_mode_combo.setCurrentIndex(data.get("rgb_mode", 0))
+            self._rgb_zone_combo.setCurrentIndex(data.get("rgb_zone", 1) - 1)
+            self._rgb_bright_slider.setValue(data.get("rgb_brightness", 100))
+            self._rgb_bright_lbl.setText(str(data.get("rgb_brightness", 100)))
+            self._rgb_speed_slider.setValue(data.get("rgb_speed", 4))
+            self._rgb_speed_lbl.setText(str(data.get("rgb_speed", 4)))
+            self._rgb_dir_combo.setCurrentIndex(data.get("rgb_direction", 1) - 1)
+            self._rgb_r_slider.setValue(data.get("rgb_red", 255))
+            self._rgb_r_lbl.setText(str(data.get("rgb_red", 255)))
+            self._rgb_g_slider.setValue(data.get("rgb_green", 62))
+            self._rgb_g_lbl.setText(str(data.get("rgb_green", 62)))
+            self._rgb_b_slider.setValue(data.get("rgb_blue", 108))
+            self._rgb_b_lbl.setText(str(data.get("rgb_blue", 108)))
+
+            for w in (self._rgb_mode_combo, self._rgb_zone_combo, self._rgb_bright_slider,
+                      self._rgb_speed_slider, self._rgb_dir_combo, self._rgb_r_slider,
+                      self._rgb_g_slider, self._rgb_b_slider):
+                w.blockSignals(False)
+
+            self._update_rgb_ui_elements()
+            self._update_color_preview()
+
     def _register_slider_interaction(self, unit: str):
         self._last_slider_change[unit] = time.time()
 
@@ -656,6 +821,57 @@ class OpeNitroWindow(QtWidgets.QMainWindow):
 
     def _toggle_usb_charge(self, checked: bool):
         self._send_command(f"SET_USB_CHARGE {'on' if checked else 'off'}")
+
+    def _update_rgb_ui_elements(self):
+        mode = self._rgb_mode_combo.currentIndex()
+        is_static = (mode == 0)
+        self._rgb_zone_combo.setEnabled(is_static)
+        self._rgb_zone_combo.setVisible(is_static)
+        self._rgb_zone_lbl.setVisible(is_static)
+
+        has_speed = (mode > 0)
+        self._rgb_speed_slider.setEnabled(has_speed)
+        self._rgb_speed_slider.setVisible(has_speed)
+        self._rgb_speed_lbl.setVisible(has_speed)
+        self._rgb_speed_title.setVisible(has_speed)
+
+        has_dir = (mode == 3)
+        self._rgb_dir_combo.setEnabled(has_dir)
+        self._rgb_dir_combo.setVisible(has_dir)
+        self._rgb_dir_lbl.setVisible(has_dir)
+
+        has_color = (mode in (0, 1, 4, 5))
+        self._rgb_r_slider.setEnabled(has_color)
+        self._rgb_g_slider.setEnabled(has_color)
+        self._rgb_b_slider.setEnabled(has_color)
+        self._rgb_r_slider.setVisible(has_color)
+        self._rgb_g_slider.setVisible(has_color)
+        self._rgb_b_slider.setVisible(has_color)
+        self._rgb_preview.setVisible(has_color)
+
+    def _update_color_preview(self):
+        r = self._rgb_r_slider.value()
+        g = self._rgb_g_slider.value()
+        b = self._rgb_b_slider.value()
+        self._rgb_preview.setStyleSheet(
+            f"border-radius: 6px; border: 1.5px solid #2C2C39; "
+            f"background-color: rgb({r}, {g}, {b});"
+        )
+
+    def _on_rgb_config_changed(self):
+        mode = self._rgb_mode_combo.currentIndex()
+        r = self._rgb_r_slider.value()
+        g = self._rgb_g_slider.value()
+        b = self._rgb_b_slider.value()
+        bright = self._rgb_bright_slider.value()
+        speed = self._rgb_speed_slider.value()
+        direction = self._rgb_dir_combo.currentIndex() + 1
+        zone = self._rgb_zone_combo.currentIndex() + 1
+
+        self._update_rgb_ui_elements()
+        self._update_color_preview()
+
+        self._send_command(f"SET_RGB {mode} {r} {g} {b} {bright} {speed} {direction} {zone}")
 
     def closeEvent(self, event):
         self._poll_timer.stop()
@@ -726,6 +942,27 @@ QSlider::handle:horizontal:hover {
     background: #FF3E6C;
     border-color: #FF6B8B;
 }
+QComboBox {
+    background-color: #1C1C24;
+    border: 1px solid #2C2C39;
+    border-radius: 6px;
+    color: #E2E2E9;
+    padding: 3px 6px;
+    font-size: 8.5pt;
+    font-weight: bold;
+    min-width: 70px;
+}
+QComboBox::drop-down {
+    border: none;
+}
+QComboBox QAbstractItemView {
+    background-color: #131318;
+    border: 1px solid #22222B;
+    color: #E2E2E9;
+    selection-background-color: #FF3E6C;
+    selection-color: #FFFFFF;
+}
+
 """
 
 

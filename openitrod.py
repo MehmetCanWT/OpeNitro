@@ -64,6 +64,14 @@ class OpeNitroDaemon:
             "coolboost_active": False,
             "kb_backlight_timeout": True,
             "usb_charge_poweroff": False,
+            "rgb_mode": 0,
+            "rgb_red": 255,
+            "rgb_green": 62,
+            "rgb_blue": 108,
+            "rgb_brightness": 100,
+            "rgb_speed": 4,
+            "rgb_direction": 1,
+            "rgb_zone": 1,
         }
         self.running = True
         self._gui_proc = None        # Track spawned GUI process
@@ -104,6 +112,42 @@ class OpeNitroDaemon:
         self._set_coolboost_ec(self.config.get("coolboost_active", False))
         self._set_kb_backlight_timeout_ec(self.config.get("kb_backlight_timeout", True))
         self._set_usb_charge_poweroff_ec(self.config.get("usb_charge_poweroff", False))
+        self._apply_rgb_config()
+
+    def _apply_rgb_config(self):
+        if not os.path.exists("/dev/acer-gkbbl-0"):
+            return
+        
+        mode = self.config.get("rgb_mode", 0)
+        red = self.config.get("rgb_red", 255)
+        green = self.config.get("rgb_green", 62)
+        blue = self.config.get("rgb_blue", 108)
+        brightness = self.config.get("rgb_brightness", 100)
+        speed = self.config.get("rgb_speed", 4)
+        direction = self.config.get("rgb_direction", 1)
+        zone = self.config.get("rgb_zone", 1)
+
+        try:
+            if mode == 0:
+                if os.path.exists("/dev/acer-gkbbl-static-0"):
+                    payload = bytes([1 << (zone - 1), red, green, blue])
+                    with open("/dev/acer-gkbbl-static-0", "wb") as f:
+                        f.write(payload)
+            else:
+                payload = [0] * 16
+                payload[0] = mode
+                payload[1] = speed
+                payload[2] = brightness
+                payload[3] = 8 if mode == 3 else 0
+                payload[4] = direction
+                payload[5] = red
+                payload[6] = green
+                payload[7] = blue
+                payload[9] = 1
+                with open("/dev/acer-gkbbl-0", "wb") as f:
+                    f.write(bytes(payload))
+        except Exception as e:
+            print(f"[daemon] Failed to apply RGB settings: {e}", file=sys.stderr)
 
     def _set_power_mode_ec(self, mode: str) -> bool:
         val_map = {
@@ -450,6 +494,9 @@ class OpeNitroDaemon:
                         "usb_charge_poweroff",
                     ):
                         self.config[key] = status[key]
+                    # Merge RGB settings from config into status dict
+                    for k in ("rgb_mode", "rgb_red", "rgb_green", "rgb_blue", "rgb_brightness", "rgb_speed", "rgb_direction", "rgb_zone"):
+                        status[k] = self.config.get(k, 0 if "mode" in k or "direction" in k or "zone" in k else (4 if "speed" in k else 100 if "brightness" in k else 255))
                     response = {"status": "success", "data": status}
                 else:
                     response = {"status": "error", "message": "Failed to read EC"}
@@ -587,6 +634,24 @@ class OpeNitroDaemon:
                                 "status": "error",
                                 "message": "EC write failed",
                             }
+            elif cmd == "SET_RGB":
+                if len(parts) < 9:
+                    response = {"status": "error", "message": "Missing arguments"}
+                else:
+                    try:
+                        self.config["rgb_mode"] = int(parts[1])
+                        self.config["rgb_red"] = int(parts[2])
+                        self.config["rgb_green"] = int(parts[3])
+                        self.config["rgb_blue"] = int(parts[4])
+                        self.config["rgb_brightness"] = int(parts[5])
+                        self.config["rgb_speed"] = int(parts[6])
+                        self.config["rgb_direction"] = int(parts[7])
+                        self.config["rgb_zone"] = int(parts[8])
+                        self._apply_rgb_config()
+                        self._save_config()
+                        response = {"status": "success", "message": "RGB config updated"}
+                    except ValueError:
+                        response = {"status": "error", "message": "Invalid integer values"}
             else:
                 response = {"status": "error", "message": f"Unknown command: {cmd}"}
 

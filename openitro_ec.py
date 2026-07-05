@@ -99,7 +99,7 @@ class OpeNitroEC:
         self.ec_file = None
         self.buffer = b""
         self._lock = threading.Lock()
-        self.model = self._detect_model()
+        self.model = self._read_dmi_field("product_name")
 
         # Resolve instance-level variables for layout mappings
         self.REG_GPU_TEMP = self.REG_GPU_TEMP
@@ -122,9 +122,9 @@ class OpeNitroEC:
     # ─── Initialization ───
 
     @staticmethod
-    def _detect_model() -> str:
+    def _read_dmi_field(field: str) -> str:
         try:
-            with open("/sys/class/dmi/id/product_name", "r") as f:
+            with open(f"/sys/class/dmi/id/{field}", "r") as f:
                 return f.read().strip()
         except (OSError, IOError):
             return "Unknown"
@@ -227,6 +227,8 @@ class OpeNitroEC:
 
         return {
             "model": self.model,
+            "product_serial": self._read_dmi_field("product_serial"),
+            "rgb_supported": os.path.exists("/dev/acer-gkbbl-0"),
             "cpu_temp": self.ec_read(self.REG_CPU_TEMP),
             "gpu_temp": self.ec_read(self.REG_GPU_TEMP),
             "sys_temp": self.ec_read(self.REG_SYS_TEMP),
