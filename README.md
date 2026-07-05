@@ -54,10 +54,27 @@ sudo pacman -S python pyqt6
    cd OpeNitro
    ```
 
-2. **Execute the Installer**:
+2. **Execute the Installer** (Recommended for systemd-based distributions):
    ```bash
    sudo ./install.sh
    ```
+
+### 🌀 Non-Systemd Installation (Optional)
+
+If your Linux distribution does not run systemd (e.g., Artix, Void Linux, Gentoo, Alpine):
+
+1. **Execute the Non-Systemd Installer**:
+   ```bash
+   sudo ./install_no_systemd.sh
+   ```
+   This copies all binaries, desktop shortcuts, and terminal wrappers to your system, but bypasses the systemd service creation.
+
+2. **Run the Daemon**:
+   To keep OpeNitro active (battery limits, hotkey support, and setting persistence), you must run the background daemon. You can run it manually:
+   ```bash
+   sudo openitrod &
+   ```
+   Or write a custom startup script for your init system (like OpenRC, runit, or dinit).
 
 ### 🗑️ Uninstallation
 
@@ -68,7 +85,7 @@ sudo ./uninstall.sh
 ```
 
 > [!IMPORTANT]
-> The installer copies all source files to `/opt/openitro/`, establishes command-line wrappers inside `/usr/local/bin/`, registers the systemd daemon (`openitrod`), and places the desktop icon and shortcut menu item.
+> The installer copies all source files to `/opt/openitro/`, establishes command-line wrappers inside `/usr/local/bin/`, registers the systemd daemon (`openitrod`) if using systemd, and places the desktop icon and shortcut menu item. All core capabilities (fan curves, CoolBoost, keyboard timeouts, battery protection) work identically on non-systemd distributions.
 
 ---
 
