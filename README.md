@@ -50,7 +50,7 @@ sudo pacman -S python pyqt6
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/trwinner9/OpeNitro.git
+   git clone https://github.com/MehmetCanWT/OpeNitro.git
    cd OpeNitro
    ```
 
