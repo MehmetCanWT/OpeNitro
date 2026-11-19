@@ -1,145 +1,75 @@
-# ⚡ OpeNitro
+# OpeNitro
 
-<p align="center">
-  <img src="openitro.png" alt="OpeNitro Logo" width="180px">
-</p>
-
-<p align="center">
-  <b>A ultra-lightweight, high-performance, and resource-efficient Acer NitroSense alternative designed for Linux.</b>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/OS-Linux-blue?style=for-the-badge&logo=linux" alt="Linux Platform">
-  <img src="https://img.shields.io/badge/Language-Python-yellow?style=for-the-badge&logo=python" alt="Python Language">
-  <img src="https://img.shields.io/badge/GUI-PyQt6-darkgreen?style=for-the-badge&logo=qt" alt="PyQt6 GUI">
-  <img src="https://img.shields.io/badge/License-MIT-red?style=for-the-badge" alt="MIT License">
-</p>
+A lightweight, GPU-accelerated Linux hardware and thermal controller for **Acer Nitro** and **Predator** laptops, written purely in Rust with **GPUI** and **[GPUI Kit](https://gpui-kit.com/)**.
 
 ---
 
-## 🌟 Key Features
+## Key Highlights
 
-* **🏎️ Zero-Lag Hotkey Listener**: Runs as a low-overhead systemd service monitoring the physical keyboard controller. Press the **OpeNitro** key (`XF86Launch2`), and the GUI pops up instantly.
-* **❄️ Dual Fan Control**: Adjust both CPU and GPU fans independently. Set to **Auto** mode, blast it to **Max (Turbo)**, or adjust precision sliders in **Manual** mode.
-* **🔋 Advanced Battery Care**: Limit your battery charge level to **80%** with automated daemon reinforcement to preserve hardware lifespan during continuous AC usage.
-* **🔥 Dynamic Power Profiles**: Seamlessly switch between performance profiles (**Quiet**, **Default**, and **Extreme**) on the fly.
-* **🎮 Sleek Gaming UI**: Designed in PyQt6 with custom vector-drawn animated cooling fans rotating dynamically relative to actual RPM speeds, alongside real-time thermal gauges.
-* **🛡️ Secure EC Communication**: Utilizes thread-safe file operations for low-level ACPI/EC registers to avoid telemetry corruption.
-
----
-
-## 🗺️ Supported Devices
-
-OpeNitro is primarily tailored for the **Acer Nitro 5 (AN515-57)**, but is compatible with several other models sharing the same Embedded Controller layout.
-
-👉 **[View the full compatibility table & verified models](supported_devices.md)**
+- **100% Pure Rust, Single Binary**: Built on `gpui-kit`. Zero Python, zero runtime dependencies, zero out-of-tree kernel modules, and zero installation scripts required.
+- **Zero `systemd` Daemons**: No background service or persistent socket created by OpeNitro. Telemetry runs unprivileged; hardware writes use an ephemeral `pkexec openitro --ec-helper` pipe with a sanitized environment that terminates immediately on window close.
+- **Anti-Cheat & Kernel Integrity Ready (Epic EAC Linux v2)**:
+  - `#![forbid(unsafe_code)]` across the entire crate.
+  - Never loads or unloads kernel modules (`no modprobe`), never recompiles kernel drivers, and never touches `/dev/port`.
+  - Reads `/sys/kernel/security/lockdown`, UEFI Secure Boot, and TPM 2.0 posture at startup.
+  - Under **Kernel Lockdown** (`integrity` / `confidentiality`), operates strictly over signed kernel `sysfs` (`platform_profile`, `charge_control_end_threshold`, `hwmon`).
+  - When Kernel Lockdown is `none` and `ec_sys` debugfs (`/sys/kernel/debug/ec/ec0/io`) is exposed, provides full EC fan RPM readout, fan modes, custom curves, and hardware toggles.
+- **Optional NBFC Coexistence**: Standalone by default (`ec_sys` / `sysfs`). If `nbfc_service` is already running on your system, OpeNitro automatically routes fan modes (`Auto`, `Max`, `Manual`, `Curve`) through `/usr/bin/nbfc` instead of fighting it, while still letting you switch to direct EC with one click.
+- **Responsive Hyprland / Wayland UI**: Adaptive layout breakpoints for tiled and floating windows, `Dark`/`Light` native themes, `QuitMode::LastWindowClosed`, and 50 ms rotor animations active only when the Dashboard is focused.
 
 ---
 
-## ⚡ Installation
+## Features
 
-### 📋 Prerequisites
+- **Unprivileged Live Telemetry (No Password Required)**:
+  - CPU, System/ACPI, and NVMe temperatures from `/sys/class/hwmon`.
+  - AC adapter state, battery percentage, and charge/discharge wattage from `/sys/class/power_supply`.
+  - NVIDIA dGPU temperature via `/usr/bin/nvidia-smi`, gated on PCI `power/runtime_status == active` so a suspended dGPU is never woken up.
+- **Fan Control & Custom Fan Curves**:
+  - Per-unit **Auto**, **Max** (Turbo), **Manual** (`0–100%`), and draggable **Curve** (`30°C–100°C` × `0%–100%`) modes with presets (*Silent*, *Balanced*, *Gaming*, *Aggressive*) and configurable hysteresis.
+- **Performance & Power Care**:
+  - **Quiet**, **Balanced**, and **Extreme** thermal profiles.
+  - **80% Battery Charge Limit** (read-modify-write on EC `0x03` bit `0x40` or `charge_control_end_threshold`).
+  - **Keyboard Backlight 30s Timeout** & **USB Power-Off Charging**.
+- **Persistent Settings**:
+  - EC hardware states (and `nbfc_service` speeds when active) remain active after closing the app.
+  - Preferences and curves are saved to `~/.config/openitro/config.json` and automatically re-applied upon unlocking.
+- **Built-In CLI**: Same binary exposes `--status`, `--json`, `--power`, `--cpu-fan`, `--gpu-fan`, `--battery-limit`, `--kb-timeout`, and `--usb-charge`.
 
-Ensure Python 3 and PyQt6 are installed on your Linux system. For Arch Linux & CachyOS:
+---
+
+## Building & Running
 
 ```bash
-sudo pacman -S python pyqt6
+cargo build --release
+./target/release/openitro
 ```
 
-### 🚀 Setup Steps
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/MehmetCanWT/OpeNitro.git
-   cd OpeNitro
-   ```
-
-2. **Execute the Installer** (Recommended for systemd-based distributions):
-   ```bash
-   sudo ./install.sh
-   ```
-
-### 🌀 Non-Systemd Installation (Optional)
-
-If your Linux distribution does not run systemd (e.g., Artix, Void Linux, Gentoo, Alpine):
-
-1. **Execute the Non-Systemd Installer**:
-   ```bash
-   sudo ./install_no_systemd.sh
-   ```
-   This copies all binaries, desktop shortcuts, and terminal wrappers to your system, but bypasses the systemd service creation.
-
-2. **Run the Daemon**:
-   To keep OpeNitro active (battery limits, hotkey support, and setting persistence), you must run the background daemon. You can run it manually:
-   ```bash
-   sudo openitrod &
-   ```
-   Or write a custom startup script for your init system (like OpenRC, runit, or dinit).
-
-### 🗑️ Uninstallation
-
-If you wish to cleanly remove OpeNitro and all its related services, configurations, and shortcuts from your operating system, simply run the uninstaller script:
+For quick development builds:
 
 ```bash
-sudo ./uninstall.sh
+cargo run
 ```
 
-> [!IMPORTANT]
-> The installer copies all source files to `/opt/openitro/`, establishes command-line wrappers inside `/usr/local/bin/`, registers the systemd daemon (`openitrod`) if using systemd, and places the desktop icon and shortcut menu item. All core capabilities (fan curves, CoolBoost, keyboard timeouts, battery protection) work identically on non-systemd distributions.
-
----
-
-## 🛠️ Usage
-
-### 🎛️ Graphical Interface (GUI)
-- Open OpeNitro by pressing the dedicated physical **OpeNitro key** on your keyboard.
-- Alternatively, launch it from your application menu (under "OpeNitro") or execute:
-  ```bash
-  openitro-gui
-  ```
-
-### 🖥️ Command Line Interface (CLI)
-For quick headless control, query or change settings directly from your terminal:
+### CLI Usage
 
 ```bash
-# Display live system thermals and fan RPM speeds
-openitro-cli --status
+# Unprivileged telemetry summary or machine-readable JSON
+./target/release/openitro --status
+./target/release/openitro --status --json
 
-# Output status in raw JSON format (ideal for custom status bars or scripts)
-openitro-cli --status --json
-
-# Set performance mode profile
-openitro-cli --power quiet       # Options: quiet, default, extreme
-
-# Toggle the 80% battery protection limit
-openitro-cli --battery-limit on  # Options: on, off
-
-# Manually override CPU fan speed (value scale: 0-200)
-openitro-cli --cpu-fan manual --cpu-speed 150
-```
-
-### ⚙️ Daemon Management
-Manage the keyboard interceptor and battery limit enforcement daemon using systemd:
-
-```bash
-# Check daemon logs and status
-systemctl status openitrod
-
-# Restart the service
-sudo systemctl restart openitrod
+# Hardware controls (run elevated for direct EC / sysfs writes)
+sudo ./target/release/openitro --power extreme
+sudo ./target/release/openitro --cpu-fan manual:75 --gpu-fan turbo
+sudo ./target/release/openitro --battery-limit on
 ```
 
 ---
 
-## 🤝 Credits & Respects
+## Supported Devices
 
-This project stands on the shoulders of giants. High respects and credit go to these pioneering reference projects in the Acer Linux space:
-- **[Linuwu-Sense](https://github.com/musicanan/Linuwu-Sense)** — WMI and ACPI sensor framework.
-- **[Div-Acer-Manager-Max](https://github.com/musicanan/Div-Acer-Manager-Max)** — Evdev keyboard mapping and process environment handshakes.
-- **[Linux-NitroSense](https://github.com/musicanan/Linux-NitroSense)** — Embedded Controller (EC) register configuration offsets.
+See [supported_devices.md](supported_devices.md) for compatible Acer Nitro / Predator models and EC register notes (`0x03` manual-enable + 80% charge limit bitmask, `0x21`/`0x22`, `0x37`/`0x3A`).
 
----
+## License
 
-## 📄 License
-
-Distributed under the **MIT License**. See `LICENSE` for details.
+Distributed under the MIT License. See [LICENSE](LICENSE).

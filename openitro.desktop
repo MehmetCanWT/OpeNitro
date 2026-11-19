@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=OpeNitro
+Comment=GPU-Accelerated Linux System Controller for Acer Nitro & Predator
+Exec=openitro
+Icon=openitro
+Terminal=false
+Type=Application
+Categories=System;Utility;HardwareSettings;
+Keywords=Acer;Nitro;Fan;Temperature;Control;Battery;
+StartupNotify=true

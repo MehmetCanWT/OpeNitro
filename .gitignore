@@ -1,19 +1,8 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# CachyOS / Arch package files or virtual environments
-.venv/
-env/
-venv/
-ENV/
+# Rust build artifacts
+target/
+**/*.rs.bk
 
 # Configuration and user-specific files
-/etc/openitro.json
-/run/openitro.sock
-
-# User requested to ignore Docs folder
 Docs/
 /Docs/
 
@@ -21,5 +10,6 @@ Docs/
 .idea/
 .vscode/
 .gemini/
+.agents/
 *~
 *.swp
