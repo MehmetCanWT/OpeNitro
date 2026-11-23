@@ -9,6 +9,9 @@ use crate::backend::types::{EcFanMode, FanUnit, PowerMode};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegisterMap {
     pub profile_name: &'static str,
+    /// `false` for models not listed in `supported_devices.md`: EC writes are refused
+    /// and register-decoded values are not shown until the layout is confirmed.
+    pub verified: bool,
 
     // GPU Fan
     pub reg_gpu_fan_mode: u8,
@@ -70,6 +73,7 @@ impl RegisterMap {
     pub const fn standard() -> Self {
         Self {
             profile_name: "Standard Acer EC",
+            verified: true,
             reg_gpu_fan_mode: 0x21,
             gpu_auto_val: 0x10,
             gpu_turbo_val: 0x20,
@@ -127,6 +131,9 @@ impl RegisterMap {
         } else if upper.contains("PREDATOR") || upper.contains("HELIOS") || upper.contains("TRITON")
         {
             map.profile_name = "Predator / Helios Base EC";
+        } else if !is_verified_model(&upper) {
+            map.profile_name = "Unverified Acer EC (read-only)";
+            map.verified = false;
         }
         map
     }
@@ -246,6 +253,16 @@ impl RegisterMap {
         let low = *buffer.get(lo as usize).unwrap_or(&0) as u16;
         (low << 8) | high
     }
+}
+
+/// Models whose EC layout is confirmed (see `supported_devices.md`). Anything else is read-only.
+const VERIFIED_MODELS: &[&str] = &[
+    "AN515-45", "AN515-46", "AN515-55", "AN515-56", "AN515-57", "AN515-58", "AN517-55", "AN16-41",
+    "AN16-42", "AN16-43", "AN17-41", "AN17-51", "ANV15-41", "ANV15-51", "ANV16-41",
+];
+
+fn is_verified_model(upper_model: &str) -> bool {
+    VERIFIED_MODELS.iter().any(|m| upper_model.contains(m))
 }
 
 /// Read a DMI identifier field from `/sys/class/dmi/id/<field>`.

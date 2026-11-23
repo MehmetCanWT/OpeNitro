@@ -1197,6 +1197,19 @@ impl OpeNitroApp {
                     cx,
                 ))
             })
+            .when(!self.telemetry.hardware.register_verified, |this| {
+                this.child(status_strip(
+                    cx.theme().warning,
+                    IconName::TriangleAlert,
+                    "Unverified Model — Read-Only",
+                    format!(
+                        "{} is not in the supported list yet, so raw EC writes are disabled. Open an issue with an EC dump on GitHub to add support.",
+                        self.telemetry.hardware.model
+                    ),
+                    div(),
+                    cx,
+                ))
+            })
             .when(nbfc_active, |this| {
                 this.child(status_strip(
                     cx.theme().cyan,

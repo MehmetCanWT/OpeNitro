@@ -42,6 +42,17 @@ fn register_map_standard_and_amd_overrides() {
 }
 
 #[test]
+fn unverified_models_are_read_only_register_maps() {
+    let unknown = RegisterMap::for_model("Nitro ANV15-52");
+    assert!(!unknown.verified);
+    assert_eq!(unknown.profile_name, "Unverified Acer EC (read-only)");
+
+    for model in ["Nitro AN515-57", "Nitro ANV15-51", "Nitro AN515-44", "Predator PH315-54"] {
+        assert!(RegisterMap::for_model(model).verified, "{model}");
+    }
+}
+
+#[test]
 fn register_map_encode_decode_modes_and_rpm() {
     let map = RegisterMap::standard();
 

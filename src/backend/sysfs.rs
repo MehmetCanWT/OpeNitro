@@ -86,7 +86,8 @@ pub fn read_hardware_info() -> HardwareInfo {
     let model = read_dmi_field("product_name");
     let vendor = read_dmi_field("sys_vendor");
     let bios_version = read_dmi_field("bios_version");
-    let register_profile = RegisterMap::for_model(&model).profile_name.to_string();
+    let register_map = RegisterMap::for_model(&model);
+    let register_profile = register_map.profile_name.to_string();
     let acpi_platform_profile = fs::read_to_string(PLATFORM_PROFILE_PATH)
         .ok()
         .map(|s| s.trim().to_string())
@@ -102,6 +103,7 @@ pub fn read_hardware_info() -> HardwareInfo {
         model,
         bios_version,
         register_profile,
+        register_verified: register_map.verified,
         acpi_platform_profile,
         acpi_profile_choices,
         hwmon_sources: snap.hwmon_sources,

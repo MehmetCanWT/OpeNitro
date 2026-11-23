@@ -93,6 +93,17 @@ impl EcDevice {
         self.backend
     }
 
+    /// Refuse raw EC writes on models whose register layout is not confirmed.
+    fn ensure_writable(&self) -> Result<(), String> {
+        if self.backend == EcBackendKind::EcSys && !self.registers.verified {
+            return Err(format!(
+                "Unverified model: raw EC writes are disabled to avoid writing wrong registers. Please open an issue with an EC dump to add support ({})",
+                read_dmi_field("product_name")
+            ));
+        }
+        Ok(())
+    }
+
     pub fn register_map(&self) -> RegisterMap {
         self.registers
     }
@@ -146,6 +157,21 @@ impl EcDevice {
         let r = self.registers;
 
         match &mut *guard {
+            HardwareTransport::EcSys(_) if !r.verified => {
+                // Layout unconfirmed: expose only standard sysfs sensors, never guessed EC bytes.
+                let sys = read_sysfs_snapshot();
+                Ok(EcSnapshot {
+                    backend: EcBackendKind::EcSys,
+                    register_profile: r.profile_name.to_string(),
+                    cpu_temp: sys.cpu_temp,
+                    gpu_temp: sys.gpu_temp,
+                    sys_temp: sys.acpi_temp,
+                    cpu_rpm: sys.cpu_rpm,
+                    gpu_rpm: sys.gpu_rpm,
+                    ac_plugged: sys.ac_plugged,
+                    ..Default::default()
+                })
+            }
             HardwareTransport::EcSys(file) => {
                 let buf = Self::read_ec_buffer(file)?;
                 let cpu_t = buf[r.reg_cpu_temp as usize];
@@ -210,6 +236,7 @@ impl EcDevice {
     }
 
     pub fn set_power_mode(&self, mode: PowerMode) -> Result<(), String> {
+        self.ensure_writable()?;
         let mut guard = self
             .transport
             .lock()
@@ -232,6 +259,7 @@ impl EcDevice {
     }
 
     pub fn set_fan_mode(&self, unit: FanUnit, mode: EcFanMode, speed_pct: u8) -> Result<(), String> {
+        self.ensure_writable()?;
         let mut guard = self
             .transport
             .lock()
@@ -265,6 +293,7 @@ impl EcDevice {
     }
 
     pub fn set_fan_speed(&self, unit: FanUnit, speed_pct: u8) -> Result<(), String> {
+        self.ensure_writable()?;
         let mut guard = self
             .transport
             .lock()
@@ -293,6 +322,7 @@ impl EcDevice {
                     .map_err(|e| format!("Failed writing Acer WMI battery limit: {e}"));
             }
         }
+        self.ensure_writable()?;
         let mut guard = self
             .transport
             .lock()
@@ -318,6 +348,7 @@ impl EcDevice {
     }
 
     pub fn set_kb_timeout(&self, enabled: bool) -> Result<(), String> {
+        self.ensure_writable()?;
         let mut guard = self
             .transport
             .lock()
@@ -338,6 +369,7 @@ impl EcDevice {
     }
 
     pub fn set_usb_charge(&self, enabled: bool) -> Result<(), String> {
+        self.ensure_writable()?;
         let mut guard = self
             .transport
             .lock()

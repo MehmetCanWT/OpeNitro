@@ -182,6 +182,7 @@ pub struct HardwareInfo {
     pub model: String,
     pub bios_version: String,
     pub register_profile: String,
+    pub register_verified: bool,
     pub acpi_platform_profile: Option<String>,
     pub acpi_profile_choices: Vec<String>,
     pub hwmon_sources: Vec<String>,
